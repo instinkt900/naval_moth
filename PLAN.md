@@ -67,6 +67,34 @@ straight-shot cannonball (flat travel with a maximum range, splashing out at the
 end). Missiles and torpedoes follow later, with homing/guidance behaviour of
 their own.
 
+## Data & content
+
+Ships, weapons, projectiles, and enemies are defined as data, not code. Each is a
+named definition authored in a JSON file and loaded at startup into an in-memory
+registry; the game instantiates entities from these definitions through a spawn
+factory rather than from hard-coded constants. This keeps the composable-ships
+pillar honest — a loadout is just a different set of references — and lets content
+and balance change without a recompile.
+
+Four definition sets, cross-referenced by id:
+
+- **Hulls** — structural identity: propulsion handling, hull dimensions and render
+  spec, base health, and the weapon mount points a hull carries.
+- **Weapons** — a projectile reference, damage, shot cooldown, and targeting
+  parameters (firing arc, range, engageable enemy types).
+- **Projectiles** — behaviour (straight-shot cannonball first, later homing), speed,
+  maximum range, and splash.
+- **Enemies** — a hull plus a weapon loadout and an AI behaviour profile; what the
+  game spawns as an opponent.
+
+References resolve by id — an enemy names a hull and weapons, a weapon names a
+projectile — and are validated when the definitions load, so a bad reference fails
+loudly at startup rather than at spawn time. Definitions are read-only content: a
+spawned entity's mutable state (position, health, cooldown timers) lives in its
+components, never back in the definition. The registry and factory arrive with the
+hull table; the weapon, projectile, and enemy tables come online through the same
+machinery as the milestones that consume them land.
+
 ## Camera & world
 
 - **Phase 1:** open sea, camera locked. No land, no scrolling.
@@ -91,16 +119,21 @@ Each milestone is a playable increment, ordered so the game feels like something
 as early as possible.
 
 - **M0 — Scaffold.** Project builds and links moth_graphics + Box2D + EnTT with
-  an empty entry point. *(current)*
+  an empty entry point. *(done)*
 - **M1 — A ship that sails.** One player ship on open sea, camera locked.
-  Click-to-move with momentum-driven turn/power and arrival easing.
-- **M2 — First fight.** Weapon components fire automatically at a target; one AI
-  enemy that can be damaged and destroyed. Health and win/lose state.
-- **M3 — Weapon depth.** Full targeting parameters (arcs, ranges, enemy types)
+  Click-to-move with momentum-driven turn/power and arrival easing. *(done)*
+- **M2 — Ships from data.** A definition registry loads hull definitions from
+  JSON; the player ship is spawned from a named hull through a factory instead of
+  inline constants. Same ship, now data-driven — the groundwork the other tables
+  reuse. *(current)*
+- **M3 — First fight.** Weapon components fire automatically at a target; one AI
+  enemy that can be damaged and destroyed. Health and win/lose state. Weapon,
+  projectile, and enemy definitions come online here.
+- **M4 — Weapon depth.** Full targeting parameters (arcs, ranges, enemy types)
   and multiple weapons per ship engaging independently. Additional projectile
   types.
-- **M4 — A world to sail.** Map with navigable land and a spring-follow camera.
-- **M5 — A sea of enemies.** Multiple AI ships around the map with independent
+- **M5 — A world to sail.** Map with navigable land and a spring-follow camera.
+- **M6 — A sea of enemies.** Multiple AI ships around the map with independent
   behaviour.
-- **M6 — Other captains.** Networked player ships.
-- **M7 — Beneath the surface.** Submarines, torpedoes, and sonar.
+- **M7 — Other captains.** Networked player ships.
+- **M8 — Beneath the surface.** Submarines, torpedoes, and sonar.
