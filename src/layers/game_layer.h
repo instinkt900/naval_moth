@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game/defs.h"
+
 #include <box2d/box2d.h>
 #include <entt/entt.hpp>
 #include <moth_ui/events/event_mouse.h>
@@ -29,10 +31,14 @@ namespace naval {
         bool OnMouseDown(moth_ui::EventMouseDown const& event);
         void DrawShip(entt::entity ship);
         void DrawTarget(entt::entity ship);
+        void DrawArcs(entt::entity ship);
+        void DrawProjectiles();
 
         moth_graphics::graphics::IGraphics& m_graphics;
         b2World m_world;
         entt::registry m_registry;
+        defs::Database m_db;
         entt::entity m_ship;
+        entt::entity m_enemy;
     };
 }

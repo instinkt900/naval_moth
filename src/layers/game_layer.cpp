@@ -1,7 +1,9 @@
 #include "layers/game_layer.h"
 
+#include "game/combat_system.h"
 #include "game/components.h"
 #include "game/propulsion_system.h"
+#include "game/ship_factory.h"
 #include "game/units.h"
 
 #include <moth_graphics/graphics/igraphics.h>
@@ -14,50 +16,26 @@
 
 namespace naval {
     namespace {
-        // --- physics feel (tune these to taste) ---
-        constexpr float kLinearDamping = 0.5f;  // water drag; lower = more coasting/drift
-        constexpr float kAngularDamping = 3.0f; // settles residual spin once uncommanded
-
-        // --- ship spec ---
-        constexpr float kHullHalfLenPx = 35.0f;
-        constexpr float kHullHalfBeamPx = 13.0f;
-        constexpr float kMaxThrust = 12.0f;      // full-power forward force
-        constexpr float kMinTurnRate = 0.5f;     // yaw rate dead in the water (rad/s)
-        constexpr float kTurnRate = 2.5f;        // yaw rate at cruise (rad/s)
-        constexpr float kRudderSpeed = 10.0f;    // forward speed (m/s) at which turning saturates
-        constexpr float kPowerDistanceM = 8.0f;  // clicks beyond this drive at full power
-
         // --- colours ---
         const moth_ui::Color kSea{ 0.10f, 0.20f, 0.32f, 1.0f };
-        const moth_ui::Color kHull{ 0.85f, 0.82f, 0.70f, 1.0f };
         const moth_ui::Color kBow{ 0.90f, 0.35f, 0.30f, 1.0f };
         const moth_ui::Color kTargetColor{ 0.95f, 0.85f, 0.40f, 1.0f };
         const moth_ui::Color kLineColor{ 0.55f, 0.65f, 0.75f, 1.0f };
+        const moth_ui::Color kArcColor{ 0.35f, 0.45f, 0.55f, 0.6f };       // firing arc at rest
+        const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f }; // arc with a target in it
     }
 
     GameLayer::GameLayer(moth_graphics::graphics::IGraphics& graphics, int widthPx, int heightPx)
         : m_graphics(graphics)
-        , m_world(b2Vec2{ 0.0f, 0.0f }) { // top-down: no gravity
-        m_ship = m_registry.create();
+        , m_world(b2Vec2{ 0.0f, 0.0f }) // top-down: no gravity
+        , m_db(defs::Database::Load("assets/data")) {
+        float const cx = static_cast<float>(widthPx) * 0.5f;
+        float const cy = static_cast<float>(heightPx) * 0.5f;
 
-        b2BodyDef bodyDef;
-        bodyDef.type = b2_dynamicBody;
-        bodyDef.position = PxToWorld({ static_cast<float>(widthPx) * 0.5f, static_cast<float>(heightPx) * 0.5f });
-        bodyDef.linearDamping = kLinearDamping;
-        bodyDef.angularDamping = kAngularDamping;
-        b2Body* body = m_world.CreateBody(&bodyDef);
-
-        b2PolygonShape hull;
-        hull.SetAsBox(PxToM(kHullHalfLenPx), PxToM(kHullHalfBeamPx));
-        b2FixtureDef fixtureDef;
-        fixtureDef.shape = &hull;
-        fixtureDef.density = 1.0f;
-        body->CreateFixture(&fixtureDef);
-
-        m_registry.emplace<Physics>(m_ship, Physics{ body });
-        m_registry.emplace<Propulsion>(m_ship, Propulsion{ kMaxThrust, kMinTurnRate, kTurnRate, kRudderSpeed, kPowerDistanceM });
-        m_registry.emplace<Renderable>(m_ship, Renderable{ kHull, kHullHalfLenPx, kHullHalfBeamPx });
-        m_registry.emplace<MoveTarget>(m_ship, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
+        m_ship = SpawnHull(m_registry, m_world, m_db, "cutter", PxToWorld({ cx, cy }));
+        // A stationary target off the bow-quarter, within broadside reach once
+        // the player brings a beam to bear.
+        m_enemy = SpawnEnemy(m_registry, m_world, m_db, "target_dummy", PxToWorld({ cx + 160.0f, cy - 160.0f }));
     }
 
     bool GameLayer::OnEvent(moth_ui::Event const& event) {
@@ -76,8 +54,11 @@ namespace naval {
     }
 
     void GameLayer::Update(uint32_t ticks) {
+        float const dt = static_cast<float>(ticks) / 1000.0f;
         UpdatePropulsion(m_registry);
-        m_world.Step(static_cast<float>(ticks) / 1000.0f, 8, 3);
+        UpdateWeapons(m_registry, dt);
+        UpdateProjectiles(m_registry, dt);
+        m_world.Step(dt, 8, 3);
     }
 
     void GameLayer::Draw() {
@@ -85,8 +66,11 @@ namespace naval {
         m_graphics.SetColor(kSea);
         m_graphics.Clear();
 
+        DrawArcs(m_ship);
         DrawTarget(m_ship);
+        DrawShip(m_enemy);
         DrawShip(m_ship);
+        DrawProjectiles();
     }
 
     void GameLayer::DrawTarget(entt::entity ship) {
@@ -142,5 +126,52 @@ namespace naval {
                                                      { renderable.halfLengthPx, renderable.halfBeamPx } });
 
         m_graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+    }
+
+    void GameLayer::DrawArcs(entt::entity ship) {
+        auto const* armament = m_registry.try_get<Armament>(ship);
+        if (armament == nullptr) {
+            return;
+        }
+        b2Body* body = m_registry.get<Physics>(ship).body;
+        moth_ui::FloatVec2 const centerPx = WorldToPx(body->GetPosition());
+        float const shipAngle = body->GetAngle();
+
+        m_graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+
+        // Each weapon's arc: two radial edges out to its range plus the outer
+        // sweep between them, brightening when a target sits inside.
+        for (auto const& weapon : armament->weapons) {
+            float const rangePx = MToPx(weapon.range);
+            float const arcCentre = shipAngle + weapon.bearing;
+            float const start = arcCentre - weapon.arcHalfAngle;
+
+            auto edge = [&](float angle) {
+                return moth_ui::FloatVec2{ centerPx.x + (rangePx * std::cos(angle)),
+                                           centerPx.y + (rangePx * std::sin(angle)) };
+            };
+
+            m_graphics.SetColor(weapon.hasTarget ? kArcActiveColor : kArcColor);
+
+            constexpr int kSegments = 16;
+            float const step = (2.0f * weapon.arcHalfAngle) / kSegments;
+            moth_ui::FloatVec2 prev = edge(start);
+            m_graphics.DrawLineF(centerPx, prev); // near radial edge
+            for (int i = 1; i <= kSegments; ++i) {
+                moth_ui::FloatVec2 const point = edge(start + (step * static_cast<float>(i)));
+                m_graphics.DrawLineF(prev, point);
+                prev = point;
+            }
+            m_graphics.DrawLineF(centerPx, prev); // far radial edge
+        }
+    }
+
+    void GameLayer::DrawProjectiles() {
+        m_graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        for (auto entity : m_registry.view<Projectile>()) {
+            auto const& projectile = m_registry.get<Projectile>(entity);
+            m_graphics.SetColor(projectile.color);
+            m_graphics.DrawFillCircleF(WorldToPx(projectile.position), projectile.radiusPx);
+        }
     }
 }

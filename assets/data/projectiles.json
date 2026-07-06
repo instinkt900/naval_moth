@@ -1,0 +1,8 @@
+{
+    "cannonball": {
+        "speed": 20.0,
+        "maxRange": 9.0,
+        "radiusPx": 3.0,
+        "color": [1.0, 0.9, 0.5, 1.0]
+    }
+}

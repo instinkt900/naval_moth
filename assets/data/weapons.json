@@ -1,0 +1,8 @@
+{
+    "broadside_cannon": {
+        "projectile": "cannonball",
+        "cooldown": 0.8,
+        "range": 8.0,
+        "arcDegrees": 30.0
+    }
+}
