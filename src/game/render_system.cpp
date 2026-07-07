@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace naval {
     namespace {
@@ -74,9 +75,8 @@ namespace naval {
 
         // Hull profile: half-beam at a point x along the keel (local +x is the
         // bow). A rounded stern cap, parallel midships, and a sharp raked bow
-        // that tapers to a point — a sharp capsule. There is no filled-polygon
-        // primitive, so the silhouette is laid down as contiguous strips whose
-        // height follows this profile; the whole set rotates with the transform.
+        // that tapers to a point — a sharp capsule. The silhouette is sampled
+        // from this profile into a filled polygon that rotates with the transform.
         float const sternCapEnd = -halfLengthPx + halfBeamPx; // aft semicircle
         float const bowStart = halfLengthPx * 0.60f;          // taper begins just fwd of amidships
         auto halfBeamAt = [&](float x) -> float {
@@ -92,18 +92,42 @@ namespace naval {
             return halfBeamPx;
         };
 
-        // Forward strips take the bow colour so heading stays readable.
-        constexpr int kHullStrips = 48;
-        float const dx = (2.0f * halfLengthPx) / kHullStrips;
+        // Walk the profile along the top edge fore-to-aft, then back along the
+        // bottom, into a closed ring. A zero-width cusp at a pointed end would
+        // duplicate the ring's first point, so drop it when it appears.
+        auto buildRing = [&](float xStern, float xBow, int segments) {
+            auto xAt = [&](int i) {
+                return xStern + ((xBow - xStern) * static_cast<float>(i) / static_cast<float>(segments));
+            };
+            std::vector<moth_ui::FloatVec2> ring;
+            ring.reserve((static_cast<size_t>(segments) * 2) + 2);
+            for (int i = 0; i <= segments; ++i) {
+                float const x = xAt(i);
+                ring.push_back({ x, halfBeamAt(x) });
+            }
+            for (int i = segments - 1; i >= 0; --i) {
+                float const x = xAt(i);
+                ring.push_back({ x, -halfBeamAt(x) });
+            }
+            if (std::abs(ring.front().x - ring.back().x) < 0.01f &&
+                std::abs(ring.front().y - ring.back().y) < 0.01f) {
+                ring.pop_back();
+            }
+            return ring;
+        };
+
+        // The whole hull as one polygon, then the bow overlaid in the heading
+        // colour from the mark line to the tip so the facing stays readable.
+        constexpr int kHullSegments = 32;
+        auto const hull = buildRing(-halfLengthPx, halfLengthPx, kHullSegments);
+        graphics.SetColor(renderable.color);
+        graphics.DrawFillPolygonF(hull.data(), hull.size());
+
+        constexpr int kBowSegments = 8;
         float const bowMarkStart = halfLengthPx * 0.55f;
-        for (int i = 0; i < kHullStrips; ++i) {
-            float const x0 = -halfLengthPx + (dx * static_cast<float>(i));
-            float const x1 = x0 + dx;
-            float const mid = (x0 + x1) * 0.5f;
-            float const h = halfBeamAt(mid);
-            graphics.SetColor(mid >= bowMarkStart ? kBow : renderable.color);
-            graphics.DrawFillRectF(moth_ui::FloatRect{ { x0, -h }, { x1, h } });
-        }
+        auto const bow = buildRing(bowMarkStart, halfLengthPx, kBowSegments);
+        graphics.SetColor(kBow);
+        graphics.DrawFillPolygonF(bow.data(), bow.size());
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
     }
