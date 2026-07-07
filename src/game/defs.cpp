@@ -44,7 +44,7 @@ namespace naval::defs {
             Projectile p;
             p.speed = j.at("speed").get<float>();
             p.maxRange = j.at("maxRange").get<float>();
-            p.radiusPx = j.at("radiusPx").get<float>();
+            p.radiusM = j.at("radiusM").get<float>();
             p.color = ParseColor(j.at("color"));
             db.m_projectiles.emplace(id, p);
         }
@@ -68,8 +68,8 @@ namespace naval::defs {
             h.propulsion.turnRate = jp.at("turnRate").get<float>();
             h.propulsion.rudderSpeed = jp.at("rudderSpeed").get<float>();
             h.propulsion.powerDistance = jp.at("powerDistance").get<float>();
-            h.halfLengthPx = j.at("halfLengthPx").get<float>();
-            h.halfBeamPx = j.at("halfBeamPx").get<float>();
+            h.halfLengthM = j.at("halfLengthM").get<float>();
+            h.halfBeamM = j.at("halfBeamM").get<float>();
             h.linearDamping = j.at("linearDamping").get<float>();
             h.angularDamping = j.at("angularDamping").get<float>();
             h.color = ParseColor(j.at("color"));

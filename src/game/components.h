@@ -37,8 +37,8 @@ namespace naval {
     // (the body's forward direction).
     struct Renderable {
         moth_ui::Color color;
-        float halfLengthPx = 0.0f; // bow-stern half extent
-        float halfBeamPx = 0.0f;   // port-starboard half extent
+        float halfLengthM = 0.0f; // bow-stern half extent, metres
+        float halfBeamM = 0.0f;   // port-starboard half extent, metres
     };
 
     // A single weapon mounted on a ship. Static fields are resolved from the
@@ -53,7 +53,7 @@ namespace naval {
         // Projectile spec, copied from the database so firing needs no lookup.
         float projectileSpeed = 0.0f;
         float projectileRange = 0.0f;
-        float projectileRadiusPx = 0.0f;
+        float projectileRadiusM = 0.0f;
         moth_ui::Color projectileColor;
 
         float cooldownRemaining = 0.0f; // s until it can fire again
@@ -76,7 +76,7 @@ namespace naval {
         b2Vec2 position{ 0.0f, 0.0f }; // world space (metres)
         b2Vec2 velocity{ 0.0f, 0.0f }; // m/s
         float remaining = 0.0f;        // m of travel left before it expires
-        float radiusPx = 0.0f;
+        float radiusM = 0.0f;          // draw radius, metres
         moth_ui::Color color;
     };
 }

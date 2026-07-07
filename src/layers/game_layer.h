@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/camera.h"
 #include "game/defs.h"
 
 #include <box2d/box2d.h>
@@ -29,12 +30,10 @@ namespace naval {
 
     private:
         bool OnMouseDown(moth_ui::EventMouseDown const& event);
-        void DrawShip(entt::entity ship);
-        void DrawTarget(entt::entity ship);
-        void DrawArcs(entt::entity ship);
-        void DrawProjectiles();
+        bool OnMouseWheel(moth_ui::EventMouseWheel const& event);
 
         moth_graphics::graphics::IGraphics& m_graphics;
+        Camera m_camera;
         b2World m_world;
         entt::registry m_registry;
         defs::Database m_db;

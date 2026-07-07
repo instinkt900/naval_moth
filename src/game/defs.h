@@ -18,7 +18,7 @@ namespace naval::defs {
     struct Projectile {
         float speed = 0.0f;    // m/s
         float maxRange = 0.0f; // metres before it expires
-        float radiusPx = 0.0f; // draw radius
+        float radiusM = 0.0f; // draw radius, metres
         moth_ui::Color color;
     };
 
@@ -50,8 +50,8 @@ namespace naval::defs {
     // A ship class: how it moves, how it draws, and what it carries.
     struct Hull {
         Propulsion propulsion;
-        float halfLengthPx = 0.0f;
-        float halfBeamPx = 0.0f;
+        float halfLengthM = 0.0f;
+        float halfBeamM = 0.0f;
         float linearDamping = 0.0f;
         float angularDamping = 0.0f;
         moth_ui::Color color;

@@ -2,7 +2,6 @@
 
 #include "game/components.h"
 #include "game/defs.h"
-#include "game/units.h"
 
 namespace naval {
     entt::entity SpawnHull(entt::registry& registry, b2World& world,
@@ -19,7 +18,7 @@ namespace naval {
         b2Body* body = world.CreateBody(&bodyDef);
 
         b2PolygonShape shape;
-        shape.SetAsBox(PxToM(hull.halfLengthPx), PxToM(hull.halfBeamPx));
+        shape.SetAsBox(hull.halfLengthM, hull.halfBeamM);
         b2FixtureDef fixtureDef;
         fixtureDef.shape = &shape;
         fixtureDef.density = 1.0f;
@@ -31,7 +30,7 @@ namespace naval {
                                                          hull.propulsion.turnRate,
                                                          hull.propulsion.rudderSpeed,
                                                          hull.propulsion.powerDistance });
-        registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthPx, hull.halfBeamPx });
+        registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM });
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
 
         Armament armament;
@@ -45,7 +44,7 @@ namespace naval {
             weapon.cooldown = weaponDef.cooldown;
             weapon.projectileSpeed = projectileDef.speed;
             weapon.projectileRange = projectileDef.maxRange;
-            weapon.projectileRadiusPx = projectileDef.radiusPx;
+            weapon.projectileRadiusM = projectileDef.radiusM;
             weapon.projectileColor = projectileDef.color;
             armament.weapons.push_back(weapon);
         }

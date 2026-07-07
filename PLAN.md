@@ -53,12 +53,37 @@ Weapons are components mounted on a ship. Each weapon carries:
 - a **projectile type** (cannonball, missile, torpedo, …),
 - a **damage** value,
 - a **shot cooldown**, and
-- **targeting parameters**: firing arc, range, and which enemy types it may
-  engage.
+- **targeting parameters**: firing arc, a range band (below), and which enemy
+  types it may engage.
 
 Weapons acquire targets on their own and fire automatically, respecting their
-cooldown, whenever a valid target sits inside their arc and range. Different
-weapons on the same ship target independently.
+cooldown, whenever a valid target sits inside their arc and firing range.
+Different weapons on the same ship target independently.
+
+### Range band
+
+Range is not a single number but a band with four zones, so distance shapes both
+*whether* a weapon can shoot and *how likely* it is to land. Each weapon carries
+three thresholds — **min**, **effective**, and **max** — that divide the line of
+fire into:
+
+- **Too close (below min).** Inside the minimum range the target cannot be
+  engaged at all — the weapon can't depress or traverse onto something right
+  alongside. Some weapons set min to zero and have no dead zone.
+- **Guaranteed (min → effective).** A target between the minimum and effective
+  ranges is hit every time it is fired on (100%).
+- **Falloff (effective → max).** The weapon may still fire past its effective
+  range, but accuracy decays across this band: hit chance starts at 100% at the
+  effective edge and drops to 0% right at the maximum range. A shot rolls against
+  that chance; a miss splashes harmlessly.
+- **Out of range (beyond max).** The target is not engageable and does not count
+  for target acquisition.
+
+Targeting acquires anything inside max range (the outer edge of the falloff
+band); the roll only decides whether an individual shot connects. This gives
+weapons distinct personalities — a short, sure-fire close weapon versus a
+long-reach gun that can harass at distance but only reliably kills within its
+effective range.
 
 ## Projectiles
 
@@ -81,7 +106,8 @@ Four definition sets, cross-referenced by id:
 - **Hulls** — structural identity: propulsion handling, hull dimensions and render
   spec, base health, and the weapon mount points a hull carries.
 - **Weapons** — a projectile reference, damage, shot cooldown, and targeting
-  parameters (firing arc, range, engageable enemy types).
+  parameters (firing arc, the min/effective/max range band, engageable enemy
+  types).
 - **Projectiles** — behaviour (straight-shot cannonball first, later homing), speed,
   maximum range, and splash.
 - **Enemies** — a hull plus a weapon loadout and an AI behaviour profile; what the
@@ -129,9 +155,9 @@ as early as possible.
 - **M3 — First fight.** Weapon components fire automatically at a target; one AI
   enemy that can be damaged and destroyed. Health and win/lose state. Weapon,
   projectile, and enemy definitions come online here.
-- **M4 — Weapon depth.** Full targeting parameters (arcs, ranges, enemy types)
-  and multiple weapons per ship engaging independently. Additional projectile
-  types.
+- **M4 — Weapon depth.** Full targeting parameters (arcs, the min/effective/max
+  range band with accuracy falloff, enemy types) and multiple weapons per ship
+  engaging independently. Additional projectile types.
 - **M5 — A world to sail.** Map with navigable land and a spring-follow camera.
 - **M6 — A sea of enemies.** Multiple AI ships around the map with independent
   behaviour.

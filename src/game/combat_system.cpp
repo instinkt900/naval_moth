@@ -1,7 +1,6 @@
 #include "game/combat_system.h"
 
 #include "game/components.h"
-#include "game/units.h"
 
 #include <box2d/box2d.h>
 
@@ -35,7 +34,7 @@ namespace naval {
             b2Body* body = shooters.get<Physics>(shooter).body;
             b2Vec2 const shipPos = body->GetPosition();
             float const shipAngle = body->GetAngle();
-            float const halfBeamM = PxToM(shooters.get<Renderable>(shooter).halfBeamPx);
+            float const halfBeamM = shooters.get<Renderable>(shooter).halfBeamM;
 
             for (auto& weapon : shooters.get<Armament>(shooter).weapons) {
                 weapon.cooldownRemaining = std::max(0.0f, weapon.cooldownRemaining - dt);
@@ -84,7 +83,7 @@ namespace naval {
                 shot.position = muzzle;
                 shot.velocity = weapon.projectileSpeed * aim;
                 shot.remaining = weapon.projectileRange;
-                shot.radiusPx = weapon.projectileRadiusPx;
+                shot.radiusM = weapon.projectileRadiusM;
                 shot.color = weapon.projectileColor;
                 spawned.push_back(shot);
 
