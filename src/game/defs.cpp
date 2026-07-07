@@ -77,6 +77,8 @@ namespace naval::defs {
                 Mount m;
                 m.weapon = jm.at("weapon").get<std::string>();
                 m.bearing = jm.at("bearingDegrees").get<float>() * moth_ui::kDegToRad;
+                m.forwardM = jm.value("forwardM", 0.0f);
+                m.lateralM = jm.value("lateralM", 0.0f);
                 h.mounts.push_back(m);
             }
             db.m_hulls.emplace(id, h);

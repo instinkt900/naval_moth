@@ -13,8 +13,8 @@
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "broadside_cannon", "bearingDegrees": -90.0 },
-            { "weapon": "broadside_cannon", "bearingDegrees": 90.0 }
+            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": 1.0, "lateralM": -0.5 },
+            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": -1.0, "lateralM": -0.5 }
         ]
     },
     "hulk": {

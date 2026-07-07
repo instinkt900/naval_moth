@@ -39,6 +39,7 @@ namespace naval {
             defs::Projectile const& projectileDef = db.GetProjectile(weaponDef.projectile);
             Weapon weapon;
             weapon.bearing = mount.bearing;
+            weapon.mountOffset = b2Vec2{ mount.forwardM, mount.lateralM };
             weapon.arcHalfAngle = weaponDef.arcHalfAngle;
             weapon.range = weaponDef.range;
             weapon.cooldown = weaponDef.cooldown;

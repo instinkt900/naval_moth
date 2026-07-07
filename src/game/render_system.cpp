@@ -114,21 +114,29 @@ namespace naval {
             return;
         }
         b2Body* body = registry.get<Physics>(ship).body;
-        moth_ui::FloatVec2 const centerPx = camera.WorldToScreen(body->GetPosition());
+        b2Vec2 const shipPos = body->GetPosition();
         float const shipAngle = body->GetAngle();
+        float const cosA = std::cos(shipAngle);
+        float const sinA = std::sin(shipAngle);
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
 
         // Each weapon's arc: two radial edges out to its range plus the outer
-        // sweep between them, brightening when a target sits inside.
+        // sweep between them, brightening when a target sits inside. The arc
+        // originates from the mount's world position, not the hull centre.
         for (auto const& weapon : armament->weapons) {
+            b2Vec2 const off = weapon.mountOffset;
+            b2Vec2 const mountWorld{ shipPos.x + (cosA * off.x) - (sinA * off.y),
+                                     shipPos.y + (sinA * off.x) + (cosA * off.y) };
+            moth_ui::FloatVec2 const originPx = camera.WorldToScreen(mountWorld);
+
             float const rangePx = camera.MToPx(weapon.range);
             float const arcCentre = shipAngle + weapon.bearing;
             float const start = arcCentre - weapon.arcHalfAngle;
 
             auto edge = [&](float angle) {
-                return moth_ui::FloatVec2{ centerPx.x + (rangePx * std::cos(angle)),
-                                           centerPx.y + (rangePx * std::sin(angle)) };
+                return moth_ui::FloatVec2{ originPx.x + (rangePx * std::cos(angle)),
+                                           originPx.y + (rangePx * std::sin(angle)) };
             };
 
             graphics.SetColor(weapon.hasTarget ? kArcActiveColor : kArcColor);
@@ -136,13 +144,13 @@ namespace naval {
             constexpr int kSegments = 16;
             float const step = (2.0f * weapon.arcHalfAngle) / kSegments;
             moth_ui::FloatVec2 prev = edge(start);
-            graphics.DrawLineF(centerPx, prev); // near radial edge
+            graphics.DrawLineF(originPx, prev); // near radial edge
             for (int i = 1; i <= kSegments; ++i) {
                 moth_ui::FloatVec2 const point = edge(start + (step * static_cast<float>(i)));
                 graphics.DrawLineF(prev, point);
                 prev = point;
             }
-            graphics.DrawLineF(centerPx, prev); // far radial edge
+            graphics.DrawLineF(originPx, prev); // far radial edge
         }
     }
 

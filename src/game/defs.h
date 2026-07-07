@@ -33,10 +33,13 @@ namespace naval::defs {
     };
 
     // A weapon fixed to a hull at a bearing relative to the bow (radians;
-    // -pi/2 = port beam, +pi/2 = starboard beam).
+    // -pi/2 = port beam, +pi/2 = starboard beam) and a position on the hull
+    // (local metres; +forward toward the bow, +lateral toward starboard).
     struct Mount {
-        std::string weapon;  // id into the weapon table
+        std::string weapon;   // id into the weapon table
         float bearing = 0.0f; // radians (loaded from bearingDegrees)
+        float forwardM = 0.0f; // hull-local offset toward the bow
+        float lateralM = 0.0f; // hull-local offset toward starboard
     };
 
     struct Propulsion {

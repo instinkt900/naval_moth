@@ -44,11 +44,15 @@ namespace naval {
     // A single weapon mounted on a ship. Static fields are resolved from the
     // database at spawn; the runtime fields update as it engages. bearing/arc
     // are relative to the bow — the arc's world centre is bodyAngle + bearing.
+    // mountOffset places the weapon on the hull in local metres (+x toward the
+    // bow, +y toward starboard); it is the origin for aiming, firing, and the
+    // drawn arc.
     struct Weapon {
-        float bearing = 0.0f;      // rad, mount direction relative to bow
-        float arcHalfAngle = 0.0f; // rad, half-width of the firing arc
-        float range = 0.0f;        // m, target acquisition range
-        float cooldown = 0.0f;     // s between shots
+        float bearing = 0.0f;               // rad, mount direction relative to bow
+        b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
+        float arcHalfAngle = 0.0f;          // rad, half-width of the firing arc
+        float range = 0.0f;                 // m, target acquisition range
+        float cooldown = 0.0f;              // s between shots
 
         // Projectile spec, copied from the database so firing needs no lookup.
         float projectileSpeed = 0.0f;
@@ -58,6 +62,12 @@ namespace naval {
 
         float cooldownRemaining = 0.0f; // s until it can fire again
         bool hasTarget = false;         // a target sits in arc+range this tick
+
+        // Aim point on the current target, chosen when engagement begins and
+        // held while it lasts, so several guns on one target spread their fire.
+        // Stored as signed fractions [-1, 1] of the target's half-extents
+        // (x fore-aft, y port-starboard) and resolved against the live target.
+        b2Vec2 aimOffset{ 0.0f, 0.0f };
     };
 
     // Every weapon a ship carries. Weapons acquire targets and fire
