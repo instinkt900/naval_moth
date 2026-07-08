@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -30,27 +31,112 @@ namespace naval {
             return dist(rng);
         }
 
-        // The nearest targetable that sits inside a weapon's arc and range,
+        // True if segments a-b and c-d cross. Parallel/collinear counts as no
+        // crossing; the other overlap tests cover those degenerate cases.
+        bool SegmentsCross(b2Vec2 a, b2Vec2 b, b2Vec2 c, b2Vec2 d) {
+            auto cross = [](b2Vec2 u, b2Vec2 v) { return (u.x * v.y) - (u.y * v.x); };
+            b2Vec2 const r = b - a;
+            b2Vec2 const s = d - c;
+            float const rxs = cross(r, s);
+            if (std::abs(rxs) < 1e-8f) {
+                return false;
+            }
+            b2Vec2 const ac = c - a;
+            float const t = cross(ac, s) / rxs;
+            float const u = cross(ac, r) / rxs;
+            return t >= 0.0f && t <= 1.0f && u >= 0.0f && u <= 1.0f;
+        }
+
+        // True if point `p` lies in the sector with apex `origin`, radius `range`,
+        // centred on `arcCentre` with half-width `arcHalfAngle`.
+        bool PointInSector(b2Vec2 p, b2Vec2 origin, float arcCentre, float range, float arcHalfAngle) {
+            b2Vec2 const d = p - origin;
+            float const len = d.Length();
+            if (len > range) {
+                return false;
+            }
+            if (len < 1e-6f) {
+                return true;
+            }
+            return std::abs(NormalizeAngle(std::atan2(d.y, d.x) - arcCentre)) <= arcHalfAngle;
+        }
+
+        // True if the weapon sector overlaps the target's oriented hull rectangle
+        // (centre `c`, heading `angle`, half-extents `halfLength`/`halfBeam`) — any
+        // overlap, not merely the hull's centre point.
+        bool SectorOverlapsHull(b2Vec2 origin, float arcCentre, float range, float arcHalfAngle,
+                                b2Vec2 c, float angle, float halfLength, float halfBeam) {
+            float const cosA = std::cos(angle);
+            float const sinA = std::sin(angle);
+            b2Vec2 const along{ cosA, sinA };    // bow-stern axis
+            b2Vec2 const across{ -sinA, cosA };  // port-starboard axis
+            b2Vec2 const corners[4] = {
+                { c.x + (halfLength * along.x) + (halfBeam * across.x), c.y + (halfLength * along.y) + (halfBeam * across.y) },
+                { c.x - (halfLength * along.x) + (halfBeam * across.x), c.y - (halfLength * along.y) + (halfBeam * across.y) },
+                { c.x - (halfLength * along.x) - (halfBeam * across.x), c.y - (halfLength * along.y) - (halfBeam * across.y) },
+                { c.x + (halfLength * along.x) - (halfBeam * across.x), c.y + (halfLength * along.y) - (halfBeam * across.y) },
+            };
+
+            // Any hull corner inside the sector.
+            for (auto const& corner : corners) {
+                if (PointInSector(corner, origin, arcCentre, range, arcHalfAngle)) {
+                    return true;
+                }
+            }
+
+            // The mount lies inside the hull.
+            b2Vec2 const rel = origin - c;
+            float const localAlong = (rel.x * along.x) + (rel.y * along.y);
+            float const localAcross = (rel.x * across.x) + (rel.y * across.y);
+            if (std::abs(localAlong) <= halfLength && std::abs(localAcross) <= halfBeam) {
+                return true;
+            }
+
+            // Either arc edge (a segment from the mount out to `range`) crosses a hull side.
+            b2Vec2 const edges[2] = {
+                { origin.x + (range * std::cos(arcCentre - arcHalfAngle)), origin.y + (range * std::sin(arcCentre - arcHalfAngle)) },
+                { origin.x + (range * std::cos(arcCentre + arcHalfAngle)), origin.y + (range * std::sin(arcCentre + arcHalfAngle)) },
+            };
+            for (int i = 0; i < 4; ++i) {
+                b2Vec2 const p0 = corners[i];
+                b2Vec2 const p1 = corners[(i + 1) % 4];
+                if (SegmentsCross(origin, edges[0], p0, p1) || SegmentsCross(origin, edges[1], p0, p1)) {
+                    return true;
+                }
+            }
+
+            // The hull point nearest the mount lies in the sector — catches a hull
+            // that dips through the far arc between the two edges.
+            float const nearAlong = std::clamp(localAlong, -halfLength, halfLength);
+            float const nearAcross = std::clamp(localAcross, -halfBeam, halfBeam);
+            b2Vec2 const nearest{ c.x + (nearAlong * along.x) + (nearAcross * across.x),
+                                  c.y + (nearAlong * along.y) + (nearAcross * across.y) };
+            return PointInSector(nearest, origin, arcCentre, range, arcHalfAngle);
+        }
+
+        // The nearest targetable whose hull overlaps a weapon's arc and range,
         // measured from `origin`, or entt::null if none qualifies.
         entt::entity AcquireTarget(entt::registry& registry, entt::entity shooter,
                                    b2Vec2 origin, float arcCentre, float range, float arcHalfAngle) {
             entt::entity best = entt::null;
-            float bestDist = range;
+            float bestDist = std::numeric_limits<float>::max();
             for (auto target : registry.view<Physics, Renderable, Targetable>()) {
                 if (target == shooter) {
                     continue;
                 }
-                b2Vec2 const toTarget = registry.get<Physics>(target).body->GetPosition() - origin;
-                float const dist = toTarget.Length();
-                if (dist > bestDist) {
+                auto const& renderable = registry.get<Renderable>(target);
+                b2Body* body = registry.get<Physics>(target).body;
+                b2Vec2 const centre = body->GetPosition();
+                if (!SectorOverlapsHull(origin, arcCentre, range, arcHalfAngle,
+                                        centre, body->GetAngle(),
+                                        renderable.halfLengthM, renderable.halfBeamM)) {
                     continue;
                 }
-                float const bearing = std::atan2(toTarget.y, toTarget.x);
-                if (std::abs(NormalizeAngle(bearing - arcCentre)) > arcHalfAngle) {
-                    continue;
+                float const dist = (centre - origin).Length();
+                if (dist < bestDist) {
+                    best = target;
+                    bestDist = dist;
                 }
-                best = target;
-                bestDist = dist;
             }
             return best;
         }
@@ -113,9 +199,14 @@ namespace naval {
                 b2Vec2 const aimPoint{ targetPos.x + (targetCos * localAim.x) - (targetSin * localAim.y),
                                        targetPos.y + (targetSin * localAim.x) + (targetCos * localAim.y) };
 
-                // Fire from the mount position, straight at the aim point.
-                b2Vec2 aim = aimPoint - mountPos;
-                aim.Normalize();
+                // Fire from the mount position toward the aim point, but never
+                // past the weapon's arc: clamp the shot's bearing to the arc so a
+                // target straddling the edge is still only shot at within it.
+                b2Vec2 const toAim = aimPoint - mountPos;
+                float const aimDelta = NormalizeAngle(std::atan2(toAim.y, toAim.x) - arcCentre);
+                float const shotBearing =
+                    arcCentre + std::clamp(aimDelta, -weapon.arcHalfAngle, weapon.arcHalfAngle);
+                b2Vec2 const aim{ std::cos(shotBearing), std::sin(shotBearing) };
 
                 Projectile shot;
                 shot.position = mountPos;
