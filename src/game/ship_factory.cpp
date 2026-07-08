@@ -44,7 +44,6 @@ namespace naval {
             weapon.range = weaponDef.range;
             weapon.cooldown = weaponDef.cooldown;
             weapon.projectileSpeed = projectileDef.speed;
-            weapon.projectileRange = projectileDef.maxRange;
             weapon.projectileRadiusM = projectileDef.radiusM;
             weapon.projectileColor = projectileDef.color;
             armament.weapons.push_back(weapon);

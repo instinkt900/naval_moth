@@ -224,7 +224,7 @@ namespace naval {
                 Projectile shot;
                 shot.position = mountPos;
                 shot.velocity = weapon.projectileSpeed * aim;
-                shot.remaining = weapon.projectileRange;
+                shot.remaining = weapon.range;
                 shot.radiusM = weapon.projectileRadiusM;
                 shot.color = weapon.projectileColor;
                 spawned.push_back(shot);

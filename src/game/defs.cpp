@@ -43,7 +43,6 @@ namespace naval::defs {
         for (auto const& [id, j] : projectilesJson.items()) {
             Projectile p;
             p.speed = j.at("speed").get<float>();
-            p.maxRange = j.at("maxRange").get<float>();
             p.radiusM = j.at("radiusM").get<float>();
             p.color = ParseColor(j.at("color"));
             db.m_projectiles.emplace(id, p);

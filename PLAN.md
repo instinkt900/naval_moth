@@ -88,9 +88,11 @@ effective range.
 ## Projectiles
 
 Distinct projectile types with their own behaviour — starting with a simple
-straight-shot cannonball (flat travel with a maximum range, splashing out at the
-end). Missiles and torpedoes follow later, with homing/guidance behaviour of
-their own.
+straight-shot cannonball (flat travel that splashes out at the end of the firing
+weapon's range). For a straight shot the flight distance is the weapon's range,
+so a projectile carries no range of its own yet. Missiles and torpedoes follow
+later, with homing/guidance behaviour — and a self-contained run distance
+independent of the launcher — of their own.
 
 ## Data & content
 
@@ -109,7 +111,8 @@ Four definition sets, cross-referenced by id:
   parameters (firing arc, the min/effective/max range band, engageable enemy
   types).
 - **Projectiles** — behaviour (straight-shot cannonball first, later homing), speed,
-  maximum range, and splash.
+  and splash. A straight shot's travel is bounded by the firing weapon's range;
+  self-guided munitions gain their own run distance when they arrive.
 - **Enemies** — a hull plus a weapon loadout and an AI behaviour profile; what the
   game spawns as an opponent.
 

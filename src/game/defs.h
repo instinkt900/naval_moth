@@ -14,10 +14,10 @@ namespace naval::defs {
     // validated when the database loads, so a bad id fails at startup rather
     // than at spawn time.
 
-    // A straight-shot projectile. Angles are irrelevant; it just travels.
+    // A straight-shot projectile. Angles are irrelevant; it just travels. How
+    // far it flies is governed by the firing weapon's range, not the projectile.
     struct Projectile {
-        float speed = 0.0f;    // m/s
-        float maxRange = 0.0f; // metres before it expires
+        float speed = 0.0f;   // m/s
         float radiusM = 0.0f; // draw radius, metres
         moth_ui::Color color;
     };

@@ -51,12 +51,11 @@ namespace naval {
         float bearing = 0.0f;               // rad, mount direction relative to bow
         b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
         float arcHalfAngle = 0.0f;          // rad, half-width of the firing arc
-        float range = 0.0f;                 // m, target acquisition range
+        float range = 0.0f;                 // m, engagement range; also how far its shots travel
         float cooldown = 0.0f;              // s between shots
 
         // Projectile spec, copied from the database so firing needs no lookup.
         float projectileSpeed = 0.0f;
-        float projectileRange = 0.0f;
         float projectileRadiusM = 0.0f;
         moth_ui::Color projectileColor;
 
