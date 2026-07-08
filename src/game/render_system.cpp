@@ -14,18 +14,11 @@
 namespace naval {
     namespace {
         // --- colours ---
-        const moth_ui::Color kSea{ 0.10f, 0.20f, 0.32f, 1.0f };
         const moth_ui::Color kBow{ 0.90f, 0.35f, 0.30f, 1.0f };
         const moth_ui::Color kTargetColor{ 0.95f, 0.85f, 0.40f, 1.0f };
         const moth_ui::Color kLineColor{ 0.55f, 0.65f, 0.75f, 1.0f };
         const moth_ui::Color kArcColor{ 0.35f, 0.45f, 0.55f, 0.6f };       // firing arc at rest
         const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f }; // arc with a target in it
-    }
-
-    void DrawSea(moth_graphics::graphics::IGraphics& graphics) {
-        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
-        graphics.SetColor(kSea);
-        graphics.Clear();
     }
 
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {

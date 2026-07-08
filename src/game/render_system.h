@@ -14,9 +14,6 @@ namespace naval {
     // layer's Draw() owns frame ordering and calls these in turn, mirroring how
     // Update() drives the simulation systems.
 
-    // Clears to the sea colour. Call first each frame.
-    void DrawSea(moth_graphics::graphics::IGraphics& graphics);
-
     // A ship's weapon firing arcs, brightening when a target sits inside one.
     void DrawArcs(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 

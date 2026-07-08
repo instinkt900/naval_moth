@@ -100,7 +100,6 @@ namespace naval {
     }
 
     void GameLayer::Draw() {
-        DrawSea(m_graphics);
         m_terrain.Draw(m_graphics, m_camera);
         DrawArcs(m_graphics, m_registry, m_camera, m_ship);
         DrawTarget(m_graphics, m_registry, m_camera, m_ship);

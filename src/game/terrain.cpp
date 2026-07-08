@@ -16,11 +16,12 @@ namespace naval {
         constexpr float kChunkM = kCellM * static_cast<float>(kChunkCells);
 
         // --- noise shaping ---
-        constexpr float kNoiseFreq = 0.012f; // world frequency (1/m)
+        constexpr float kNoiseFreq = 0.008f; // world frequency (1/m); lower = larger landmasses
         constexpr int kOctaves = 4;
         constexpr float kLacunarity = 2.0f;
         constexpr float kGain = 0.5f;
-        constexpr float kSeaLevel = 0.15f; // fBm above this is land; higher = less land
+        constexpr float kSeaLevel = 0.15f;      // fBm above this is land; higher = less land
+        constexpr float kShallowLevel = -0.18f; // height down to here is shallow water (lower = wider rim)
 
         // Keep a clear harbour around the origin so a ship never spawns embedded.
         constexpr float kSpawnClearM = 45.0f;
@@ -30,13 +31,15 @@ namespace naval {
         constexpr int kLoadMargin = 1; // generate this far past the view
         constexpr int kKeepMargin = 2; // unload only once this far past
 
+        const moth_ui::Color kSea{ 0.10f, 0.20f, 0.32f, 1.0f };
+        const moth_ui::Color kShallow{ 0.20f, 0.30f, 0.42f, 1.0f };
         const moth_ui::Color kLand{ 0.36f, 0.40f, 0.28f, 1.0f };
 
-        // Zero-crossing of the height field along the segment a->b, where va>0
-        // and vb<=0 (or vice versa); the denominator is always non-zero because
-        // the two ends straddle sea level.
-        b2Vec2 Crossing(b2Vec2 a, float va, b2Vec2 b, float vb) {
-            float const t = va / (va - vb);
+        // Point where the height field crosses @p level along the segment a->b,
+        // whose ends straddle it; the denominator is non-zero because one end is
+        // above the level and the other at or below it.
+        b2Vec2 Crossing(b2Vec2 a, float va, b2Vec2 b, float vb, float level) {
+            float const t = (va - level) / (va - vb);
             return { a.x + (t * (b.x - a.x)), a.y + (t * (b.y - a.y)) };
         }
     }
@@ -54,34 +57,30 @@ namespace naval {
         return h;
     }
 
-    void Terrain::Generate(int cx, int cy) {
-        Chunk chunk;
-        chunk.cx = cx;
-        chunk.cy = cy;
-
-        b2BodyDef bodyDef;
-        bodyDef.type = b2_staticBody;
-        chunk.body = m_world.CreateBody(&bodyDef); // world-space vertices; body at origin
-
+    void Terrain::March(int cx, int cy, float level,
+                        std::vector<moth_ui::FloatVec2>& out, b2Body* edgeBody) const {
         auto vec = [](b2Vec2 p) { return moth_ui::FloatVec2{ p.x, p.y }; };
         auto tri = [&](b2Vec2 a, b2Vec2 b, b2Vec2 c) {
-            chunk.triangles.push_back(vec(a));
-            chunk.triangles.push_back(vec(b));
-            chunk.triangles.push_back(vec(c));
+            out.push_back(vec(a));
+            out.push_back(vec(b));
+            out.push_back(vec(c));
         };
         auto quad = [&](b2Vec2 a, b2Vec2 b, b2Vec2 c, b2Vec2 d) { tri(a, b, c); tri(a, c, d); };
         auto penta = [&](b2Vec2 a, b2Vec2 b, b2Vec2 c, b2Vec2 d, b2Vec2 e) {
             tri(a, b, c); tri(a, c, d); tri(a, d, e);
         };
         auto coast = [&](b2Vec2 a, b2Vec2 b) {
+            if (edgeBody == nullptr) {
+                return;
+            }
             b2EdgeShape edge;
             edge.SetTwoSided(a, b);
-            chunk.body->CreateFixture(&edge, 0.0f);
+            edgeBody->CreateFixture(&edge, 0.0f);
         };
 
         // Marching squares over every cell in the chunk. Corners are sampled from
         // global cell indices, so a chunk shares its border samples with its
-        // neighbours and coastlines line up seamlessly across chunk boundaries.
+        // neighbours and contours line up seamlessly across chunk boundaries.
         for (int iy = 0; iy < kChunkCells; ++iy) {
             for (int ix = 0; ix < kChunkCells; ++ix) {
                 int const gx = (cx * kChunkCells) + ix;
@@ -100,21 +99,21 @@ namespace naval {
                 float const v2 = Height(x1, y1);
                 float const v3 = Height(x0, y1);
 
-                int const code = (v0 > 0.0f ? 1 : 0) | (v1 > 0.0f ? 2 : 0) |
-                                 (v2 > 0.0f ? 4 : 0) | (v3 > 0.0f ? 8 : 0);
+                int const code = (v0 > level ? 1 : 0) | (v1 > level ? 2 : 0) |
+                                 (v2 > level ? 4 : 0) | (v3 > level ? 8 : 0);
                 if (code == 0) {
-                    continue; // all sea
+                    continue; // wholly below the level
                 }
 
                 // Interpolated crossings on the four edges (only the ones the
                 // active case references are meaningful).
-                b2Vec2 const e01 = Crossing(c0, v0, c1, v1);
-                b2Vec2 const e12 = Crossing(c1, v1, c2, v2);
-                b2Vec2 const e23 = Crossing(c2, v2, c3, v3);
-                b2Vec2 const e30 = Crossing(c3, v3, c0, v0);
+                b2Vec2 const e01 = Crossing(c0, v0, c1, v1, level);
+                b2Vec2 const e12 = Crossing(c1, v1, c2, v2, level);
+                b2Vec2 const e23 = Crossing(c2, v2, c3, v3, level);
+                b2Vec2 const e30 = Crossing(c3, v3, c0, v0, level);
 
                 switch (code) {
-                case 15: quad(c0, c1, c2, c3); break;                          // all land
+                case 15: quad(c0, c1, c2, c3); break;                          // all in
                 case 1:  tri(c0, e01, e30);    coast(e01, e30); break;         // c0
                 case 2:  tri(c1, e12, e01);    coast(e01, e12); break;         // c1
                 case 4:  tri(c2, e23, e12);    coast(e12, e23); break;         // c2
@@ -127,11 +126,11 @@ namespace naval {
                 case 14: penta(c1, c2, c3, e30, e01); coast(e30, e01); break;  // c1,c2,c3
                 case 13: penta(c2, c3, c0, e01, e12); coast(e01, e12); break;  // c0,c2,c3
                 case 11: penta(c3, c0, c1, e12, e23); coast(e12, e23); break;  // c0,c1,c3
-                case 5:  // saddle: c0 and c2 land, treated as two separate corners
+                case 5:  // saddle: c0 and c2 in, treated as two separate corners
                     tri(c0, e01, e30); coast(e01, e30);
                     tri(c2, e23, e12); coast(e12, e23);
                     break;
-                case 10: // saddle: c1 and c3 land
+                case 10: // saddle: c1 and c3 in
                     tri(c1, e12, e01); coast(e01, e12);
                     tri(c3, e30, e23); coast(e23, e30);
                     break;
@@ -139,6 +138,22 @@ namespace naval {
                 }
             }
         }
+    }
+
+    void Terrain::Generate(int cx, int cy) {
+        Chunk chunk;
+        chunk.cx = cx;
+        chunk.cy = cy;
+
+        b2BodyDef bodyDef;
+        bodyDef.type = b2_staticBody;
+        chunk.body = m_world.CreateBody(&bodyDef); // world-space vertices; body at origin
+
+        // Shallow rim first (fill only, no collision), then the land on top of it
+        // (fill plus the coastline collision edges). Drawing land over the wider
+        // shallow region leaves just a variable-width coastal band showing.
+        March(cx, cy, kShallowLevel, chunk.shallowTriangles, nullptr);
+        March(cx, cy, 0.0f, chunk.triangles, chunk.body);
 
         m_chunks.emplace(Key(cx, cy), std::move(chunk));
     }
@@ -180,12 +195,16 @@ namespace naval {
 
     void Terrain::Draw(moth_graphics::graphics::IGraphics& graphics, Camera const& camera) const {
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
-        graphics.SetColor(kLand);
+
+        // The open sea: clear the whole view to the deep-water colour first, so
+        // shallow rims and land draw over it.
+        graphics.SetColor(kSea);
+        graphics.Clear();
+
         std::vector<moth_ui::FloatVec2> screen;
-        for (auto const& entry : m_chunks) {
-            auto const& triangles = entry.second.triangles;
+        auto drawTriangles = [&](std::vector<moth_ui::FloatVec2> const& triangles) {
             if (triangles.empty()) {
-                continue;
+                return;
             }
             screen.clear();
             screen.reserve(triangles.size());
@@ -193,6 +212,17 @@ namespace naval {
                 screen.push_back(camera.WorldToScreen(b2Vec2{ world.x, world.y }));
             }
             graphics.DrawTrianglesF(screen.data(), screen.size());
+        };
+
+        // Shallow-water rims under all land, then the land itself, so a chunk's
+        // land never lets an adjacent chunk's rim show through.
+        graphics.SetColor(kShallow);
+        for (auto const& entry : m_chunks) {
+            drawTriangles(entry.second.shallowTriangles);
+        }
+        graphics.SetColor(kLand);
+        for (auto const& entry : m_chunks) {
+            drawTriangles(entry.second.triangles);
         }
     }
 }
