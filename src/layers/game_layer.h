@@ -2,6 +2,7 @@
 
 #include "game/camera.h"
 #include "game/defs.h"
+#include "game/terrain.h"
 
 #include <box2d/box2d.h>
 #include <entt/entt.hpp>
@@ -45,6 +46,7 @@ namespace naval {
         // giving a soft ramp up on press and coast to rest on release.
         moth_ui::FloatVec2 m_panVel{ 0.0f, 0.0f };
         b2World m_world;
+        Terrain m_terrain;
         entt::registry m_registry;
         defs::Database m_db;
         entt::entity m_ship;

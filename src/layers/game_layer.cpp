@@ -15,8 +15,11 @@ namespace naval {
     GameLayer::GameLayer(moth_graphics::graphics::IGraphics& graphics, int widthPx, int heightPx)
         : m_graphics(graphics)
         , m_world(b2Vec2{ 0.0f, 0.0f }) // top-down: no gravity
+        , m_terrain(m_world, 1337u)
         , m_db(defs::Database::Load("assets/data")) {
         m_camera.viewSize = { static_cast<float>(widthPx), static_cast<float>(heightPx) };
+        // Populate the starting neighbourhood so land is present on frame zero.
+        m_terrain.Update(m_camera);
 
         // Player at the view centre; a stationary target off the bow-quarter,
         // within broadside reach once the player brings a beam to bear.
@@ -87,6 +90,9 @@ namespace naval {
         m_camera.center.x += (m_panVel.x / m_camera.pixelsPerMeter) * dt;
         m_camera.center.y += (m_panVel.y / m_camera.pixelsPerMeter) * dt;
 
+        // Stream land in/out around the (possibly moved) camera view.
+        m_terrain.Update(m_camera);
+
         UpdatePropulsion(m_registry);
         UpdateWeapons(m_registry, dt);
         UpdateProjectiles(m_registry, dt);
@@ -95,6 +101,7 @@ namespace naval {
 
     void GameLayer::Draw() {
         DrawSea(m_graphics);
+        m_terrain.Draw(m_graphics, m_camera);
         DrawArcs(m_graphics, m_registry, m_camera, m_ship);
         DrawTarget(m_graphics, m_registry, m_camera, m_ship);
         DrawShip(m_graphics, m_registry, m_camera, m_enemy);

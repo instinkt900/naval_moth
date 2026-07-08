@@ -138,6 +138,13 @@ machinery as the milestones that consume them land.
 - Submarines as a ship class (dive/surface state).
 - Torpedo weapons.
 - Sonar mechanics for detecting submerged contacts.
+- **Pathfinding around land.** Today a move order steers straight at the
+  destination, so a course that crosses land just grinds the hull against the
+  shore. A ship could instead route around intervening land — finding a path to
+  the destination and following it as a series of waypoints, while keeping the
+  momentum-driven handling that makes maneuvering a skill. Not needed while the
+  seas are mostly open, but a natural fit once land is common enough to get in
+  the way.
 
 ## Milestones
 
