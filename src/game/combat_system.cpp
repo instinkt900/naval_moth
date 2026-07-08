@@ -61,6 +61,19 @@ namespace naval {
             return std::abs(NormalizeAngle(std::atan2(d.y, d.x) - arcCentre)) <= arcHalfAngle;
         }
 
+        // True if the circle (centre `p`, radius `r`) overlaps the oriented hull
+        // rectangle (centre `c`, heading `angle`, half-extents).
+        bool HullOverlapsCircle(b2Vec2 c, float angle, float halfLength, float halfBeam, b2Vec2 p, float r) {
+            float const cosA = std::cos(angle);
+            float const sinA = std::sin(angle);
+            b2Vec2 const rel = p - c;
+            float const localAlong = (rel.x * cosA) + (rel.y * sinA);
+            float const localAcross = (-rel.x * sinA) + (rel.y * cosA);
+            float const dx = localAlong - std::clamp(localAlong, -halfLength, halfLength);
+            float const dy = localAcross - std::clamp(localAcross, -halfBeam, halfBeam);
+            return (dx * dx) + (dy * dy) <= r * r;
+        }
+
         // True if the weapon sector overlaps the target's oriented hull rectangle
         // (centre `c`, heading `angle`, half-extents `halfLength`/`halfBeam`) — any
         // overlap, not merely the hull's centre point.
@@ -227,6 +240,10 @@ namespace naval {
 
     void UpdateProjectiles(entt::registry& registry, float dt) {
         std::vector<entt::entity> expired;
+        // Projectiles collide with targetable hulls only, which keeps a shot from
+        // striking the (non-targetable) ship that fired it. Health/damage is a
+        // later step; for now a hit simply destroys the projectile.
+        auto hulls = registry.view<Physics, Renderable, Targetable>();
         auto view = registry.view<Projectile>();
         for (auto entity : view) {
             auto& projectile = view.get<Projectile>(entity);
@@ -234,6 +251,17 @@ namespace naval {
             projectile.remaining -= dt * projectile.velocity.Length();
             if (projectile.remaining <= 0.0f) {
                 expired.push_back(entity);
+                continue;
+            }
+            for (auto hull : hulls) {
+                b2Body* body = hulls.get<Physics>(hull).body;
+                auto const& renderable = hulls.get<Renderable>(hull);
+                if (HullOverlapsCircle(body->GetPosition(), body->GetAngle(),
+                                       renderable.halfLengthM, renderable.halfBeamM,
+                                       projectile.position, projectile.radiusM)) {
+                    expired.push_back(entity);
+                    break;
+                }
             }
         }
         for (auto entity : expired) {
