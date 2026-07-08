@@ -30,6 +30,7 @@ namespace naval {
         moth_ui::EventDispatch dispatch(event);
         dispatch.Dispatch(this, &GameLayer::OnMouseDown);
         dispatch.Dispatch(this, &GameLayer::OnMouseWheel);
+        dispatch.Dispatch(this, &GameLayer::OnKey);
         return dispatch.GetHandled();
     }
 
@@ -53,8 +54,39 @@ namespace naval {
         return true;
     }
 
+    bool GameLayer::OnKey(moth_ui::EventKey const& event) {
+        // Track WASD hold state; the pan itself happens per-tick in Update so it
+        // stays smooth and framerate-independent regardless of key-repeat rate.
+        bool const down = event.GetAction() == moth_ui::KeyAction::Down;
+        switch (event.GetKey()) {
+        case moth_ui::Key::W: m_panUp = down; return true;
+        case moth_ui::Key::S: m_panDown = down; return true;
+        case moth_ui::Key::A: m_panLeft = down; return true;
+        case moth_ui::Key::D: m_panRight = down; return true;
+        default: return false;
+        }
+    }
+
     void GameLayer::Update(uint32_t ticks) {
         float const dt = static_cast<float>(ticks) / 1000.0f;
+
+        // Pan the camera from held WASD. Target speed is fixed in screen
+        // pixels/second so panning feels the same at any zoom; the velocity is
+        // eased toward that target for a soft ramp on press and coast on release.
+        constexpr float kPanPxPerSec = 600.0f;
+        constexpr float kPanEaseTau = 0.12f; // s; smaller = snappier
+        moth_ui::FloatVec2 dir{ 0.0f, 0.0f };
+        if (m_panLeft) { dir.x -= 1.0f; }
+        if (m_panRight) { dir.x += 1.0f; }
+        if (m_panUp) { dir.y -= 1.0f; }
+        if (m_panDown) { dir.y += 1.0f; }
+        // Frame-rate independent exponential approach toward the target velocity.
+        float const ease = 1.0f - std::exp(-dt / kPanEaseTau);
+        m_panVel.x += ((dir.x * kPanPxPerSec) - m_panVel.x) * ease;
+        m_panVel.y += ((dir.y * kPanPxPerSec) - m_panVel.y) * ease;
+        m_camera.center.x += (m_panVel.x / m_camera.pixelsPerMeter) * dt;
+        m_camera.center.y += (m_panVel.y / m_camera.pixelsPerMeter) * dt;
+
         UpdatePropulsion(m_registry);
         UpdateWeapons(m_registry, dt);
         UpdateProjectiles(m_registry, dt);

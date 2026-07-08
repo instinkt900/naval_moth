@@ -5,6 +5,7 @@
 
 #include <box2d/box2d.h>
 #include <entt/entt.hpp>
+#include <moth_ui/events/event_key.h>
 #include <moth_ui/events/event_mouse.h>
 #include <moth_ui/layers/layer.h>
 
@@ -31,9 +32,18 @@ namespace naval {
     private:
         bool OnMouseDown(moth_ui::EventMouseDown const& event);
         bool OnMouseWheel(moth_ui::EventMouseWheel const& event);
+        bool OnKey(moth_ui::EventKey const& event);
 
         moth_graphics::graphics::IGraphics& m_graphics;
         Camera m_camera;
+        // Held WASD state; the camera pans continuously while any is down.
+        bool m_panUp = false;
+        bool m_panDown = false;
+        bool m_panLeft = false;
+        bool m_panRight = false;
+        // Smoothed pan velocity (screen px/sec) eased toward the held direction,
+        // giving a soft ramp up on press and coast to rest on release.
+        moth_ui::FloatVec2 m_panVel{ 0.0f, 0.0f };
         b2World m_world;
         entt::registry m_registry;
         defs::Database m_db;
