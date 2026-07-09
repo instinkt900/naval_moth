@@ -6,7 +6,7 @@
 namespace naval {
     entt::entity SpawnHull(entt::registry& registry, b2World& world,
                            defs::Database const& db, std::string const& hullId,
-                           b2Vec2 position) {
+                           b2Vec2 position, Faction faction) {
         defs::Hull const& hull = db.GetHull(hullId);
         entt::entity entity = registry.create();
 
@@ -32,6 +32,7 @@ namespace naval {
                                                          hull.propulsion.powerDistance });
         registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM });
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
+        registry.emplace<Combatant>(entity, Combatant{ faction });
 
         Armament armament;
         for (auto const& mount : hull.mounts) {
@@ -45,6 +46,7 @@ namespace naval {
             weapon.cooldown = weaponDef.cooldown;
             weapon.projectileSpeed = projectileDef.speed;
             weapon.projectileRadiusM = projectileDef.radiusM;
+            weapon.projectileDamage = projectileDef.damage;
             weapon.projectileColor = projectileDef.color;
             armament.weapons.push_back(weapon);
         }
@@ -57,8 +59,9 @@ namespace naval {
                             defs::Database const& db, std::string const& enemyId,
                             b2Vec2 position) {
         defs::Enemy const& enemy = db.GetEnemy(enemyId);
-        entt::entity entity = SpawnHull(registry, world, db, enemy.hull, position);
-        registry.emplace<Targetable>(entity);
+        entt::entity entity = SpawnHull(registry, world, db, enemy.hull, position, Faction::Enemy);
+        float const hp = db.GetHull(enemy.hull).health;
+        registry.emplace<Health>(entity, Health{ hp, hp });
         return entity;
     }
 }

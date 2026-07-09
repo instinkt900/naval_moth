@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include "game/components.h"
+
 namespace naval::defs {
     class Database;
 }
@@ -14,12 +16,13 @@ namespace naval {
     // its hull id — physics body, propulsion, render spec and armament — with no
     // inline constants, so ship classes differ purely by data.
 
-    // Spawns the hull `hullId` at `position` (world metres) and returns it.
+    // Spawns the hull `hullId` at `position` (world metres), fighting for
+    // `faction`, and returns it.
     entt::entity SpawnHull(entt::registry& registry, b2World& world,
                            defs::Database const& db, std::string const& hullId,
-                           b2Vec2 position);
+                           b2Vec2 position, Faction faction);
 
-    // Spawns the enemy `enemyId` (its hull) at `position` and tags it Targetable.
+    // Spawns the enemy `enemyId` (its hull) at `position` on the Enemy faction.
     entt::entity SpawnEnemy(entt::registry& registry, b2World& world,
                             defs::Database const& db, std::string const& enemyId,
                             b2Vec2 position);

@@ -57,6 +57,7 @@ namespace naval {
         // Projectile spec, copied from the database so firing needs no lookup.
         float projectileSpeed = 0.0f;
         float projectileRadiusM = 0.0f;
+        float projectileDamage = 0.0f;
         moth_ui::Color projectileColor;
 
         float cooldownRemaining = 0.0f; // s until it can fire again
@@ -76,8 +77,25 @@ namespace naval {
         std::vector<Weapon> weapons;
     };
 
-    // Tags an entity that weapons may fire at.
-    struct Targetable {};
+    // Which side a ship fights for. Weapons engage hulls of a different
+    // faction; a projectile strikes only hulls of the faction it was fired at.
+    enum class Faction {
+        Player,
+        Enemy,
+    };
+
+    // The side an armed entity belongs to. Every ship carries one so weapons
+    // can tell friend from foe — any hull may fire on any hull not its own.
+    struct Combatant {
+        Faction faction = Faction::Player;
+    };
+
+    // Hit points. A hull loses `current` when a projectile strikes it and is
+    // removed once it reaches zero. Only ships that can be destroyed carry this.
+    struct Health {
+        float current = 0.0f;
+        float max = 0.0f;
+    };
 
     // A projectile in flight. Straight-shot: constant velocity, expires once it
     // has travelled its range. Kept out of Box2D — it has no collision yet.
@@ -86,6 +104,8 @@ namespace naval {
         b2Vec2 velocity{ 0.0f, 0.0f }; // m/s
         float remaining = 0.0f;        // m of travel left before it expires
         float radiusM = 0.0f;          // draw radius, metres
+        float damage = 0.0f;           // hit points removed from the hull it strikes
         moth_ui::Color color;
+        Faction target = Faction::Enemy; // the faction this shot may strike
     };
 }

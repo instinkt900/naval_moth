@@ -1,8 +1,14 @@
 {
-    "broadside_cannon": {
+    "ahead_gun": {
         "projectile": "cannonball",
         "cooldown": 0.05,
         "range": 8.0,
-        "arcDegrees": 30.0
+        "arcDegrees": 50.0
+    },
+    "broadside_cannon": {
+        "projectile": "cannonball",
+        "cooldown": 2.0,
+        "range": 15.0,
+        "arcDegrees": 35.0
     }
 }

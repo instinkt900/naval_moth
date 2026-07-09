@@ -1,10 +1,10 @@
 {
     "cutter": {
         "propulsion": {
-            "maxThrust": 12.0,
-            "minTurnRate": 0.3,
-            "turnRate": 3.5,
-            "rudderSpeed": 5.0,
+            "maxThrust": 8.0,
+            "minTurnRate": 0.1,
+            "turnRate": 0.5,
+            "rudderSpeed": 1.0,
             "powerDistance": 8.0
         },
         "halfLengthM": 3.0,
@@ -13,8 +13,9 @@
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": 1.0, "lateralM": -0.5 },
-            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": -1.0, "lateralM": -0.5 }
+            { "weapon": "ahead_gun", "bearingDegrees": 0.0, "forwardM": 2.8, "lateralM": 0 },
+            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -0.5 },
+            { "weapon": "broadside_cannon", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 0.5 }
         ]
     },
     "hulk": {
@@ -29,7 +30,12 @@
         "halfBeamM": 0.8,
         "linearDamping": 2.0,
         "angularDamping": 5.0,
+        "health": 100.0,
         "color": [0.80, 0.40, 0.35, 1.0],
-        "mounts": []
+        "mounts": [
+            { "weapon": "ahead_gun", "bearingDegrees": 0.0, "forwardM": 2.8, "lateralM": 0 },
+            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -0.5 },
+            { "weapon": "broadside_cannon", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 0.5 }
+        ]
     }
 }

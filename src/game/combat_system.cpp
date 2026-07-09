@@ -127,14 +127,19 @@ namespace naval {
             return PointInSector(nearest, origin, arcCentre, range, arcHalfAngle);
         }
 
-        // The nearest targetable whose hull overlaps a weapon's arc and range,
-        // measured from `origin`, or entt::null if none qualifies.
-        entt::entity AcquireTarget(entt::registry& registry, entt::entity shooter,
+        // The faction a ship fires on: anyone not on its own side.
+        Faction Opposing(Faction f) {
+            return f == Faction::Player ? Faction::Enemy : Faction::Player;
+        }
+
+        // The nearest hull of `enemyFaction` whose shape overlaps a weapon's arc
+        // and range, measured from `origin`, or entt::null if none qualifies.
+        entt::entity AcquireTarget(entt::registry& registry, Faction enemyFaction,
                                    b2Vec2 origin, float arcCentre, float range, float arcHalfAngle) {
             entt::entity best = entt::null;
             float bestDist = std::numeric_limits<float>::max();
-            for (auto target : registry.view<Physics, Renderable, Targetable>()) {
-                if (target == shooter) {
+            for (auto target : registry.view<Physics, Renderable, Combatant>()) {
+                if (registry.get<Combatant>(target).faction != enemyFaction) {
                     continue;
                 }
                 auto const& renderable = registry.get<Renderable>(target);
@@ -163,6 +168,7 @@ namespace naval {
         auto shooters = registry.view<Physics, Armament>();
 
         for (auto shooter : shooters) {
+            Faction const enemyFaction = Opposing(registry.get<Combatant>(shooter).faction);
             b2Body* body = shooters.get<Physics>(shooter).body;
             b2Vec2 const shipPos = body->GetPosition();
             float const shipAngle = body->GetAngle();
@@ -183,7 +189,7 @@ namespace naval {
                                        shipPos.y + (sinA * off.x) + (cosA * off.y) };
 
                 entt::entity const target =
-                    AcquireTarget(registry, shooter, mountPos, arcCentre, weapon.range, weapon.arcHalfAngle);
+                    AcquireTarget(registry, enemyFaction, mountPos, arcCentre, weapon.range, weapon.arcHalfAngle);
                 if (target == entt::null) {
                     continue;
                 }
@@ -226,7 +232,9 @@ namespace naval {
                 shot.velocity = weapon.projectileSpeed * aim;
                 shot.remaining = weapon.range;
                 shot.radiusM = weapon.projectileRadiusM;
+                shot.damage = weapon.projectileDamage;
                 shot.color = weapon.projectileColor;
+                shot.target = enemyFaction;
                 spawned.push_back(shot);
 
                 weapon.cooldownRemaining = weapon.cooldown;
@@ -239,11 +247,15 @@ namespace naval {
     }
 
     void UpdateProjectiles(entt::registry& registry, float dt) {
-        std::vector<entt::entity> expired;
-        // Projectiles collide with targetable hulls only, which keeps a shot from
-        // striking the (non-targetable) ship that fired it. Health/damage is a
-        // later step; for now a hit simply destroys the projectile.
-        auto hulls = registry.view<Physics, Renderable, Targetable>();
+        std::vector<entt::entity> expired;   // projectiles to remove
+        std::vector<entt::entity> destroyed; // hulls whose health reached zero
+        // A projectile collides only with hulls of the faction it was fired at,
+        // which keeps a shot from striking its own side (the ship that fired it
+        // included). A hit removes the projectile and subtracts its damage from
+        // the hull's health; a hull with no Health is simply not destructible.
+        // Removals are deferred until after iterating so we never touch pools
+        // (entt views or the Box2D world) while a view over them is live.
+        auto hulls = registry.view<Physics, Renderable, Combatant>();
         auto view = registry.view<Projectile>();
         for (auto entity : view) {
             auto& projectile = view.get<Projectile>(entity);
@@ -254,17 +266,34 @@ namespace naval {
                 continue;
             }
             for (auto hull : hulls) {
+                if (hulls.get<Combatant>(hull).faction != projectile.target) {
+                    continue;
+                }
                 b2Body* body = hulls.get<Physics>(hull).body;
                 auto const& renderable = hulls.get<Renderable>(hull);
                 if (HullOverlapsCircle(body->GetPosition(), body->GetAngle(),
                                        renderable.halfLengthM, renderable.halfBeamM,
                                        projectile.position, projectile.radiusM)) {
                     expired.push_back(entity);
+                    // Apply damage only while the hull is still alive, so a hull
+                    // is queued for destruction exactly once — on the hit that
+                    // crosses zero — however many shots land the same tick.
+                    if (auto* health = registry.try_get<Health>(hull); health != nullptr && health->current > 0.0f) {
+                        health->current -= projectile.damage;
+                        if (health->current <= 0.0f) {
+                            destroyed.push_back(hull);
+                        }
+                    }
                     break;
                 }
             }
         }
         for (auto entity : expired) {
+            registry.destroy(entity);
+        }
+        for (auto entity : destroyed) {
+            b2Body* body = registry.get<Physics>(entity).body;
+            body->GetWorld()->DestroyBody(body);
             registry.destroy(entity);
         }
     }

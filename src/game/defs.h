@@ -19,6 +19,7 @@ namespace naval::defs {
     struct Projectile {
         float speed = 0.0f;   // m/s
         float radiusM = 0.0f; // draw radius, metres
+        float damage = 0.0f;  // hit points removed from a hull it strikes
         moth_ui::Color color;
     };
 
@@ -57,6 +58,7 @@ namespace naval::defs {
         float halfBeamM = 0.0f;
         float linearDamping = 0.0f;
         float angularDamping = 0.0f;
+        float health = 0.0f; // hit points; 0 means the hull is not destructible
         moth_ui::Color color;
         std::vector<Mount> mounts;
     };

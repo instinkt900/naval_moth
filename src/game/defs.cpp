@@ -44,6 +44,7 @@ namespace naval::defs {
             Projectile p;
             p.speed = j.at("speed").get<float>();
             p.radiusM = j.at("radiusM").get<float>();
+            p.damage = j.at("damage").get<float>();
             p.color = ParseColor(j.at("color"));
             db.m_projectiles.emplace(id, p);
         }
@@ -71,6 +72,7 @@ namespace naval::defs {
             h.halfBeamM = j.at("halfBeamM").get<float>();
             h.linearDamping = j.at("linearDamping").get<float>();
             h.angularDamping = j.at("angularDamping").get<float>();
+            h.health = j.value("health", 0.0f);
             h.color = ParseColor(j.at("color"));
             for (auto const& jm : j.at("mounts")) {
                 Mount m;

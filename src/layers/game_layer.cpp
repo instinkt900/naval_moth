@@ -23,7 +23,7 @@ namespace naval {
 
         // Player at the view centre; a stationary target off the bow-quarter,
         // within broadside reach once the player brings a beam to bear.
-        m_ship = SpawnHull(m_registry, m_world, m_db, "cutter", m_camera.center);
+        m_ship = SpawnHull(m_registry, m_world, m_db, "cutter", m_camera.center, Faction::Player);
         m_enemy = SpawnEnemy(m_registry, m_world, m_db, "target_dummy",
                              m_camera.ScreenToWorld({ (m_camera.viewSize.x * 0.5f) + 160.0f,
                                                       (m_camera.viewSize.y * 0.5f) - 160.0f }));
@@ -100,10 +100,18 @@ namespace naval {
     }
 
     void GameLayer::Draw() {
+        // The enemy is removed from the registry when its health hits zero, so
+        // its handle only draws while it is still valid.
+        bool const enemyAlive = m_registry.valid(m_enemy);
         m_terrain.Draw(m_graphics, m_camera);
+        if (enemyAlive) {
+            DrawArcs(m_graphics, m_registry, m_camera, m_enemy);
+        }
         DrawArcs(m_graphics, m_registry, m_camera, m_ship);
         DrawTarget(m_graphics, m_registry, m_camera, m_ship);
-        DrawShip(m_graphics, m_registry, m_camera, m_enemy);
+        if (enemyAlive) {
+            DrawShip(m_graphics, m_registry, m_camera, m_enemy);
+        }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
         DrawProjectiles(m_graphics, m_registry, m_camera);
     }
