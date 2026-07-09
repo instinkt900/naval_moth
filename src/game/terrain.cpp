@@ -57,6 +57,24 @@ namespace naval {
         return h;
     }
 
+    bool Terrain::IsWater(b2Vec2 point, float clearanceM) const {
+        // Land is height > 0; the shore is the height == 0 contour where the
+        // collision edges live. Rejecting any positive height within the ring
+        // keeps a spawned hull off the coastline in every direction.
+        if (Height(point.x, point.y) > 0.0f) {
+            return false;
+        }
+        constexpr int kSamples = 8;
+        for (int i = 0; i < kSamples; ++i) {
+            float const angle = (2.0f * b2_pi) * static_cast<float>(i) / static_cast<float>(kSamples);
+            if (Height(point.x + (clearanceM * std::cos(angle)),
+                       point.y + (clearanceM * std::sin(angle))) > 0.0f) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     void Terrain::March(int cx, int cy, float level,
                         std::vector<moth_ui::FloatVec2>& out, b2Body* edgeBody) const {
         auto vec = [](b2Vec2 p) { return moth_ui::FloatVec2{ p.x, p.y }; };

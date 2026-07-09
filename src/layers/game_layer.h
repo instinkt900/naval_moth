@@ -35,6 +35,9 @@ namespace naval {
         bool OnMouseWheel(moth_ui::EventMouseWheel const& event);
         bool OnKey(moth_ui::EventKey const& event);
 
+        // Scatter enemies across open water in a ring around the player start.
+        void SpawnEnemies();
+
         moth_graphics::graphics::IGraphics& m_graphics;
         Camera m_camera;
         // Held WASD state; the camera pans continuously while any is down.
@@ -50,6 +53,5 @@ namespace naval {
         entt::registry m_registry;
         defs::Database m_db;
         entt::entity m_ship;
-        entt::entity m_enemy;
     };
 }

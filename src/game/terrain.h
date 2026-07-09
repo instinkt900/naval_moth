@@ -36,6 +36,12 @@ namespace naval {
         // shallow rims and land, mapping world metres to screen via the camera.
         void Draw(moth_graphics::graphics::IGraphics& graphics, Camera const& camera) const;
 
+        // True if `point` is open water with no coastline within `clearanceM`
+        // metres — the point itself and a ring of samples around it are all below
+        // sea level. Used to place spawns clear of any shore. Reads the noise
+        // field directly, so it does not depend on which chunks are resident.
+        bool IsWater(b2Vec2 point, float clearanceM) const;
+
     private:
         // One resident chunk: its grid coords, its static collision body, plus
         // cached fill triangles in world metres (three vertices per triangle).

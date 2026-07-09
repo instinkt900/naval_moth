@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 namespace naval {
     GameLayer::GameLayer(moth_graphics::graphics::IGraphics& graphics, int widthPx, int heightPx)
@@ -21,12 +22,39 @@ namespace naval {
         // Populate the starting neighbourhood so land is present on frame zero.
         m_terrain.Update(m_camera);
 
-        // Player at the view centre; a stationary target off the bow-quarter,
-        // within broadside reach once the player brings a beam to bear.
+        // Player at the view centre; enemies scattered across the surrounding
+        // water for the player to hunt down.
         m_ship = SpawnHull(m_registry, m_world, m_db, "cutter", m_camera.center, Faction::Player);
-        m_enemy = SpawnEnemy(m_registry, m_world, m_db, "target_dummy",
-                             m_camera.ScreenToWorld({ (m_camera.viewSize.x * 0.5f) + 160.0f,
-                                                      (m_camera.viewSize.y * 0.5f) - 160.0f }));
+        SpawnEnemies();
+    }
+
+    void GameLayer::SpawnEnemies() {
+        // Place each enemy at a random bearing and distance in a ring around the
+        // player start, retrying until the point (and a small clearance around
+        // it) is open water; a slot that never lands in water is skipped rather
+        // than looping forever.
+        constexpr int kEnemyCount = 6;
+        constexpr float kMinDistM = 70.0f;   // no closer than this to the player
+        constexpr float kMaxDistM = 320.0f;  // no farther than this out
+        constexpr float kClearanceM = 6.0f;  // keep the hull clear of any shore
+        constexpr int kMaxAttempts = 64;     // give up on a slot after this many tries
+
+        std::mt19937 rng{ std::random_device{}() };
+        std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * b2_pi);
+        std::uniform_real_distribution<float> distDist(kMinDistM, kMaxDistM);
+
+        for (int i = 0; i < kEnemyCount; ++i) {
+            for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+                float const angle = angleDist(rng);
+                float const radius = distDist(rng);
+                b2Vec2 const point{ m_camera.center.x + (radius * std::cos(angle)),
+                                    m_camera.center.y + (radius * std::sin(angle)) };
+                if (m_terrain.IsWater(point, kClearanceM)) {
+                    SpawnEnemy(m_registry, m_world, m_db, "target_dummy", point);
+                    break;
+                }
+            }
+        }
     }
 
     bool GameLayer::OnEvent(moth_ui::Event const& event) {
@@ -100,17 +128,19 @@ namespace naval {
     }
 
     void GameLayer::Draw() {
-        // The enemy is removed from the registry when its health hits zero, so
-        // its handle only draws while it is still valid.
-        bool const enemyAlive = m_registry.valid(m_enemy);
         m_terrain.Draw(m_graphics, m_camera);
-        if (enemyAlive) {
-            DrawArcs(m_graphics, m_registry, m_camera, m_enemy);
+
+        // Firing arcs beneath the hulls, for every armed ship still alive.
+        for (auto ship : m_registry.view<Physics, Armament>()) {
+            DrawArcs(m_graphics, m_registry, m_camera, ship);
         }
-        DrawArcs(m_graphics, m_registry, m_camera, m_ship);
         DrawTarget(m_graphics, m_registry, m_camera, m_ship);
-        if (enemyAlive) {
-            DrawShip(m_graphics, m_registry, m_camera, m_enemy);
+
+        // Hulls on top; the player's is drawn last so it stays the topmost.
+        for (auto ship : m_registry.view<Physics, Renderable>()) {
+            if (ship != m_ship) {
+                DrawShip(m_graphics, m_registry, m_camera, ship);
+            }
         }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
         DrawProjectiles(m_graphics, m_registry, m_camera);
