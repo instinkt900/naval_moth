@@ -20,6 +20,7 @@ set(SOURCES ${SOURCES}
 	src/game/ship_factory.cpp
 	src/game/terrain.cpp
 	src/game/wake_system.cpp
+	src/game/wander_system.cpp
 	src/layers/game_layer.cpp
 	src/main.cpp
 )

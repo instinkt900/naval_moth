@@ -38,6 +38,7 @@ namespace naval {
     struct MoveTarget {
         b2Vec2 point{ 0.0f, 0.0f }; // world space (metres)
         bool active = false;        // true while a destination is set; false = coast/idle
+        float maxThrottle = 1.0f;   // cap on autopilot throttle; 1 = full power, <1 = cruise
     };
 
     // Direct manual control of a ship, an alternative to the waypoint autopilot.
@@ -50,6 +51,20 @@ namespace naval {
         float throttle = 0.0f;  // commanded thrust, [-1, 1]; negative = astern
         float rudderCmd = 0.0f; // commanded rudder, [-1, 1]; + = starboard
         float rudder = 0.0f;    // actual rudder position, slews toward rudderCmd
+    };
+
+    // Idle patrol AI. A ship carrying this is handed a long random waypoint on
+    // open water whenever it has no active MoveTarget, and runs to it in a
+    // straight line through the same autopilot the player's clicks drive. Legs
+    // are kilometres, so a ship holds a heading for minutes before it arrives and
+    // picks the next one — a slow patrol, not a nervous one. The only other way a
+    // leg ends is a periodic progress check: if the hull has made almost no way
+    // since the last check (it has run up against a shore) it re-rolls, so a
+    // stuck ship doesn't grind there. Placeholder behaviour until aggro ranges
+    // and gunnery drive enemy movement.
+    struct Wander {
+        b2Vec2 lastPos{ 0.0f, 0.0f }; // ship position at the last progress check
+        float sinceCheck = 0.0f;      // s accumulated toward the next progress check
     };
 
     // How to draw the hull. The long axis runs bow-to-stern along local +x

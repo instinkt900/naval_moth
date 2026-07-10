@@ -6,6 +6,7 @@
 #include "game/render_system.h"
 #include "game/ship_factory.h"
 #include "game/wake_system.h"
+#include "game/wander_system.h"
 
 #include <moth_ui/events/event_dispatch.h>
 #include <moth_ui/utils/transform.h>
@@ -60,8 +61,8 @@ namespace naval {
                 b2Vec2 const point{ m_camera.center.x + (radius * std::cos(angle)),
                                     m_camera.center.y + (radius * std::sin(angle)) };
                 if (m_terrain.IsWater(point, kClearanceM)) {
-                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, "target_dummy", point);
-                    // Point each dummy in a random direction so they aren't all
+                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, "raider", point);
+                    // Point each enemy in a random direction so they aren't all
                     // bow-up; the spawn point is kept, only the heading changes.
                     m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
                     break;
@@ -144,6 +145,8 @@ namespace naval {
         // Stream land in/out around the (possibly moved) camera view.
         m_terrain.Update(m_camera);
 
+        // Enemies pick their own waypoints before the autopilot steers everyone.
+        UpdateWander(m_registry, m_terrain, dt);
         UpdatePropulsion(m_registry, dt);
         UpdateWeapons(m_registry, dt);
         UpdateProjectiles(m_registry, dt);

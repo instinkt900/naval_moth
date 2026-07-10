@@ -71,6 +71,8 @@ namespace naval {
         entt::entity entity = SpawnHull(registry, world, db, enemy.hull, position, Faction::Enemy);
         float const hp = db.GetHull(enemy.hull).health;
         registry.emplace<Health>(entity, Health{ hp, hp });
+        // Enemies patrol on their own until aggro logic takes over.
+        registry.emplace<Wander>(entity, Wander{});
         return entity;
     }
 }

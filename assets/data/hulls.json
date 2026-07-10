@@ -56,6 +56,25 @@
             { "weapon": "big_gun", "bearingDegrees": 90.0, "forwardM": -15.0, "lateralM": 5.0 }
         ]
     },
+    "corsair": {
+        "propulsion": {
+            "maxThrust": 800.0,
+            "maxSpeedKnots": 20.0,
+            "turnRate": 0.15,
+            "powerDistance": 100.0,
+            "rudderRate": 0.8
+        },
+        "halfLengthM": 30.0,
+        "halfBeamM": 5.0,
+        "foreShoulder": [0.8, 0.55],
+        "aftShoulder": [0.9, 0.8],
+        "angularDamping": 3.0,
+        "health": 80.0,
+        "color": [0.80, 0.40, 0.35, 1.0],
+        "mounts": [
+            { "weapon": "auto_gun", "bearingDegrees": 0.0, "forwardM": 18.0, "lateralM": 0.0 }
+        ]
+    },
     "hulk": {
         "propulsion": {
             "maxThrust": 0.0,

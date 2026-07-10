@@ -119,10 +119,13 @@ namespace naval {
             float const yaw = std::clamp(headingError * kTurnGain, -effectiveTurnRate, effectiveTurnRate);
             body->SetAngularVelocity(yaw);
 
-            // Throttle scales with distance: far = full power, near = gentle.
+            // Throttle scales with distance: far = full power, near = gentle,
+            // then capped by the order's throttle limit so a cruising ship holds
+            // a steady bell instead of charging every leg at flank.
             b2Vec2 direction = toTarget;
             direction.Normalize();
-            float const throttle = std::clamp(dist / propulsion.powerDistance, 0.0f, 1.0f);
+            float const throttle =
+                std::min(std::clamp(dist / propulsion.powerDistance, 0.0f, 1.0f), target.maxThrottle);
 
             // Gate thrust so a big engine can't out-run the rudder. Below the
             // best-turn speed the ship drives freely to gain steerage way; once it
