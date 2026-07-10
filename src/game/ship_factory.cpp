@@ -32,6 +32,7 @@ namespace naval {
                                                          hull.propulsion.powerDistance,
                                                          hull.propulsion.rudderRate });
         registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM });
+        registry.emplace<Identity>(entity, Identity{ hullId });
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
         registry.emplace<Helm>(entity, Helm{});
         registry.emplace<Combatant>(entity, Combatant{ faction });
@@ -41,6 +42,7 @@ namespace naval {
             defs::Weapon const& weaponDef = db.GetWeapon(mount.weapon);
             defs::Projectile const& projectileDef = db.GetProjectile(weaponDef.projectile);
             Weapon weapon;
+            weapon.name = mount.weapon;
             weapon.bearing = mount.bearing;
             weapon.mountOffset = b2Vec2{ mount.forwardM, mount.lateralM };
             weapon.arcHalfAngle = weaponDef.arcHalfAngle;

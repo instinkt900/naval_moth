@@ -142,6 +142,9 @@ namespace naval {
         // sweep between them, brightening when a target sits inside. The arc
         // originates from the mount's world position, not the hull centre.
         for (auto const& weapon : armament->weapons) {
+            if (!weapon.showArc) {
+                continue;
+            }
             b2Vec2 const off = weapon.mountOffset;
             b2Vec2 const mountWorld{ shipPos.x + (cosA * off.x) - (sinA * off.y),
                                      shipPos.y + (sinA * off.x) + (cosA * off.y) };

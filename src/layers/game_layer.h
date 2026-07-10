@@ -42,6 +42,10 @@ namespace naval {
         // ship, as an alternative to clicking waypoints.
         void DrawHelmPanel();
 
+        // Per-weapon rows within the helm window: arc and auto-fire toggles, a
+        // manual fire button, and the locked contact's picture.
+        void DrawWeaponControls();
+
         moth_graphics::graphics::IGraphics& m_graphics;
         Camera m_camera;
         // Held WASD state; the camera pans continuously while any is down.

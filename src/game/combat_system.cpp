@@ -190,7 +190,9 @@ namespace naval {
 
                 entt::entity const target =
                     AcquireTarget(registry, enemyFaction, mountPos, arcCentre, weapon.range, weapon.arcHalfAngle);
+                weapon.target = target;
                 if (target == entt::null) {
+                    weapon.fireRequested = false; // nothing to shoot at; drop any pending order
                     continue;
                 }
                 weapon.hasTarget = true;
@@ -201,7 +203,12 @@ namespace naval {
                     weapon.aimOffset = b2Vec2{ RandomUnitSpan(), RandomUnitSpan() };
                 }
 
-                if (weapon.cooldownRemaining > 0.0f) {
+                // Fire when off cooldown and either the weapon engages
+                // automatically or the player has clicked Fire. A manual order is
+                // one-shot: consumed whether or not it yields a shot this tick.
+                bool const wantFire = weapon.autoFire || weapon.fireRequested;
+                weapon.fireRequested = false;
+                if (!wantFire || weapon.cooldownRemaining > 0.0f) {
                     continue;
                 }
 

@@ -1,8 +1,10 @@
 #pragma once
 
 #include <box2d/box2d.h>
+#include <entt/entt.hpp>
 #include <moth_ui/utils/color.h>
 
+#include <string>
 #include <vector>
 
 namespace naval {
@@ -63,6 +65,7 @@ namespace naval {
     // bow, +y toward starboard); it is the origin for aiming, firing, and the
     // drawn arc.
     struct Weapon {
+        std::string name;                   // weapon def id, for display
         float bearing = 0.0f;               // rad, mount direction relative to bow
         b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
         float arcHalfAngle = 0.0f;          // rad, half-width of the firing arc
@@ -77,6 +80,16 @@ namespace naval {
 
         float cooldownRemaining = 0.0f; // s until it can fire again
         bool hasTarget = false;         // a target sits in arc+range this tick
+
+        // Player-facing controls, one set per weapon.
+        bool showArc = true;        // draw this weapon's firing arc
+        bool autoFire = true;       // acquire and fire automatically
+        bool fireRequested = false; // a manual fire order, consumed next update
+
+        // The contact this weapon currently has locked, or entt::null. Refreshed
+        // every update; read it only after registry.valid, as the target may be
+        // destroyed between updates.
+        entt::entity target = entt::null;
 
         // Aim point on the current target, chosen when engagement begins and
         // held while it lasts, so several guns on one target spread their fire.
@@ -103,6 +116,12 @@ namespace naval {
     // can tell friend from foe — any hull may fire on any hull not its own.
     struct Combatant {
         Faction faction = Faction::Player;
+    };
+
+    // A human-readable class name (the hull id), for labelling a contact in the
+    // controls readout.
+    struct Identity {
+        std::string name;
     };
 
     // Hit points. A hull loses `current` when a projectile strikes it and is

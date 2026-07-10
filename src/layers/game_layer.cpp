@@ -7,6 +7,7 @@
 #include "game/ship_factory.h"
 
 #include <moth_ui/events/event_dispatch.h>
+#include <moth_ui/utils/transform.h>
 
 #include <imgui.h>
 #include <spdlog/fmt/fmt.h>
@@ -242,6 +243,73 @@ namespace naval {
         if (ImGui::Button("Midships")) {
             helm.rudderCmd = 0.0f;
         }
+
+        // Per-weapon controls (arc, auto-fire, manual fire, target picture).
+        DrawWeaponControls();
+
         ImGui::End();
+    }
+
+    void GameLayer::DrawWeaponControls() {
+        auto* armament = m_registry.try_get<Armament>(m_ship);
+        if (armament == nullptr) {
+            return;
+        }
+        constexpr float kMetresPerSecToKnots = 1.94384f;
+        b2Body* body = m_registry.get<Physics>(m_ship).body;
+        b2Vec2 const shipPos = body->GetPosition();
+        float const shipAngle = body->GetAngle();
+        auto norm360 = [](float deg) {
+            deg = std::fmod(deg, 360.0f);
+            return deg < 0.0f ? deg + 360.0f : deg;
+        };
+
+        for (std::size_t i = 0; i < armament->weapons.size(); ++i) {
+            ImGui::Separator();
+            Weapon& weapon = armament->weapons[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
+
+            ImGui::Checkbox("Show arc", &weapon.showArc);
+            ImGui::SameLine();
+            ImGui::Checkbox("Auto fire", &weapon.autoFire);
+
+            bool const ready = weapon.hasTarget && weapon.cooldownRemaining <= 0.0f;
+            ImGui::BeginDisabled(!ready);
+            if (ImGui::Button("Fire")) {
+                weapon.fireRequested = true;
+            }
+            ImGui::EndDisabled();
+            if (weapon.cooldownRemaining > 0.0f) {
+                ImGui::SameLine();
+                ImGui::TextUnformatted(
+                    fmt::format("reloading {:.1f}s", weapon.cooldownRemaining).c_str());
+            }
+
+            // The target picture, guarded by registry.valid since the locked
+            // contact may have been destroyed since the last weapons update.
+            if (weapon.target != entt::null && m_registry.valid(weapon.target)) {
+                b2Body* contact = m_registry.get<Physics>(weapon.target).body;
+                b2Vec2 const toContact = contact->GetPosition() - shipPos;
+                float const rangeM = toContact.Length();
+                float const speedKn = contact->GetLinearVelocity().Length() * kMetresPerSecToKnots;
+                float const bearingDeg =
+                    norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
+                float const headingDeg = norm360(contact->GetAngle() * moth_ui::kRadToDeg);
+                char const* type = "contact";
+                if (auto const* id = m_registry.try_get<Identity>(weapon.target); id != nullptr) {
+                    type = id->name.c_str();
+                }
+                ImGui::TextUnformatted(fmt::format("Target: {}", type).c_str());
+                ImGui::TextUnformatted(
+                    fmt::format("  rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
+                ImGui::TextUnformatted(
+                    fmt::format("  brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
+            } else {
+                ImGui::TextUnformatted("No target");
+            }
+
+            ImGui::PopID();
+        }
     }
 }
