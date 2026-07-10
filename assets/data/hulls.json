@@ -1,16 +1,30 @@
 {
-    "cutter": {
+    "scout": {
         "propulsion": {
             "maxThrust": 200.0,
-            "minTurnRate": 0.05,
-            "turnRate": 0.2,
-            "rudderSpeed": 20.0,
+            "maxSpeedKnots": 36.0,
+            "turnRate": 0.5,
+            "powerDistance": 100.0,
+            "rudderRate": 1.2
+        },
+        "halfLengthM": 12.0,
+        "halfBeamM": 2.6,
+        "angularDamping": 3.0,
+        "color": [0.85, 0.82, 0.70, 1.0],
+        "mounts": [
+            { "weapon": "auto_gun", "bearingDegrees": 0.0, "forwardM": 5.0, "lateralM": 0.0 }
+        ]
+    },
+    "frigate": {
+        "propulsion": {
+            "maxThrust": 400.0,
+            "maxSpeedKnots": 25.0,
+            "turnRate": 0.1,
             "powerDistance": 100.0,
             "rudderRate": 0.6
         },
         "halfLengthM": 45.0,
         "halfBeamM": 5.0,
-        "linearDamping": 0.02,
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
@@ -21,22 +35,17 @@
     "hulk": {
         "propulsion": {
             "maxThrust": 0.0,
-            "minTurnRate": 0.0,
+            "maxSpeedKnots": 0.0,
             "turnRate": 0.0,
-            "rudderSpeed": 1.0,
             "powerDistance": 1.0,
             "rudderRate": 0.25
         },
-        "halfLengthM": 3.0,
-        "halfBeamM": 0.8,
-        "linearDamping": 2.0,
+        "halfLengthM": 55.0,
+        "halfBeamM": 12.0,
         "angularDamping": 5.0,
         "health": 100.0,
         "color": [0.80, 0.40, 0.35, 1.0],
         "mounts": [
-            { "weapon": "ahead_gun", "bearingDegrees": 0.0, "forwardM": 2.8, "lateralM": 0 },
-            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -0.5 },
-            { "weapon": "broadside_cannon", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 0.5 }
         ]
     }
 }

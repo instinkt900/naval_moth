@@ -1,12 +1,12 @@
 {
-    "ahead_gun": {
-        "projectile": "cannonball",
-        "cooldown": 0.05,
-        "range": 8.0,
-        "arcDegrees": 50.0
+    "auto_gun": {
+        "projectile": "basic_shell",
+        "cooldown": 0.1,
+        "range": 130.0,
+        "arcDegrees": 360.0
     },
     "broadside_gun": {
-        "projectile": "basic_shell",
+        "projectile": "large_shell",
         "cooldown": 2.0,
         "range": 300.0,
         "arcDegrees": 65.0

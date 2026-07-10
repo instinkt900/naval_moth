@@ -11,7 +11,7 @@
 namespace naval {
     namespace {
         // --- noise shaping ---
-        constexpr float kNoiseFreq = 0.0003f; // world frequency (1/m); lower = larger landmasses
+        constexpr float kNoiseFreq = 0.0001f; // world frequency (1/m); lower = larger landmasses
         constexpr int kOctaves = 4;
         constexpr float kLacunarity = 2.0f;
         constexpr float kGain = 0.5f;

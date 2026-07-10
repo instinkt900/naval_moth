@@ -28,7 +28,7 @@ namespace naval {
 
         // Player at the view centre; enemies scattered across the surrounding
         // water for the player to hunt down.
-        m_ship = SpawnHull(m_registry, m_world, m_db, "cutter", m_camera.center, Faction::Player);
+        m_ship = SpawnHull(m_registry, m_world, m_db, "frigate", m_camera.center, Faction::Player);
         SpawnEnemies();
     }
 
@@ -38,23 +38,31 @@ namespace naval {
         // it) is open water; a slot that never lands in water is skipped rather
         // than looping forever.
         constexpr int kEnemyCount = 6;
-        constexpr float kMinDistM = 70.0f;   // no closer than this to the player
-        constexpr float kMaxDistM = 320.0f;  // no farther than this out
-        constexpr float kClearanceM = 6.0f;  // keep the hull clear of any shore
+        constexpr float kMinDistM = 800.0f;  // no closer than this to the player
+        constexpr float kMaxDistM = 3500.0f; // no farther than this out
+        constexpr float kClearanceM = 60.0f; // keep the hull clear of any shore
         constexpr int kMaxAttempts = 64;     // give up on a slot after this many tries
 
+        // Give each enemy its own angular slice (with jitter inside it) so they
+        // fan out around the player instead of clustering on one bearing, and
+        // scatter the range across the whole band.
+        float const slice = (2.0f * b2_pi) / static_cast<float>(kEnemyCount);
         std::mt19937 rng{ std::random_device{}() };
-        std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * b2_pi);
+        std::uniform_real_distribution<float> jitterDist(-slice * 0.4f, slice * 0.4f);
         std::uniform_real_distribution<float> distDist(kMinDistM, kMaxDistM);
+        std::uniform_real_distribution<float> headingDist(0.0f, 2.0f * b2_pi);
 
         for (int i = 0; i < kEnemyCount; ++i) {
             for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
-                float const angle = angleDist(rng);
+                float const angle = (slice * static_cast<float>(i)) + jitterDist(rng);
                 float const radius = distDist(rng);
                 b2Vec2 const point{ m_camera.center.x + (radius * std::cos(angle)),
                                     m_camera.center.y + (radius * std::sin(angle)) };
                 if (m_terrain.IsWater(point, kClearanceM)) {
-                    SpawnEnemy(m_registry, m_world, m_db, "target_dummy", point);
+                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, "target_dummy", point);
+                    // Point each dummy in a random direction so they aren't all
+                    // bow-up; the spawn point is kept, only the heading changes.
+                    m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
                     break;
                 }
             }
@@ -91,7 +99,7 @@ namespace naval {
         }
         // Wheel drives zoom: each notch scales the view about its centre.
         constexpr float kZoomStep = 1.15f; // per notch
-        constexpr float kMinZoom = 0.3f;   // px/m
+        constexpr float kMinZoom = 0.06f;   // px/m
         constexpr float kMaxZoom = 8.0f;  // px/m
         float const notches = static_cast<float>(event.GetDelta().y);
         m_camera.pixelsPerMeter = std::clamp(m_camera.pixelsPerMeter * std::pow(kZoomStep, notches),

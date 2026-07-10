@@ -9,6 +9,8 @@
 
 namespace naval::defs {
     namespace {
+        constexpr float kKnotsToMetersPerSecond = 0.514444f;
+
         nlohmann::json ReadJson(std::filesystem::path const& path) {
             std::ifstream in(path);
             if (!in) {
@@ -64,14 +66,14 @@ namespace naval::defs {
             Hull h;
             auto const& jp = j.at("propulsion");
             h.propulsion.maxThrust = jp.at("maxThrust").get<float>();
-            h.propulsion.minTurnRate = jp.at("minTurnRate").get<float>();
+            h.propulsion.maxSpeed = jp.at("maxSpeedKnots").get<float>() * kKnotsToMetersPerSecond;
             h.propulsion.turnRate = jp.at("turnRate").get<float>();
-            h.propulsion.rudderSpeed = jp.at("rudderSpeed").get<float>();
             h.propulsion.powerDistance = jp.at("powerDistance").get<float>();
             h.propulsion.rudderRate = jp.at("rudderRate").get<float>();
+            Require(h.propulsion.maxThrust <= 0.0f || h.propulsion.maxSpeed > 0.0f,
+                    "hull '" + id + "' has thrust but no maxSpeed");
             h.halfLengthM = j.at("halfLengthM").get<float>();
             h.halfBeamM = j.at("halfBeamM").get<float>();
-            h.linearDamping = j.at("linearDamping").get<float>();
             h.angularDamping = j.at("angularDamping").get<float>();
             h.health = j.value("health", 0.0f);
             h.color = ParseColor(j.at("color"));

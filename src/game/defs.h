@@ -45,9 +45,8 @@ namespace naval::defs {
 
     struct Propulsion {
         float maxThrust = 0.0f;
-        float minTurnRate = 0.0f;
+        float maxSpeed = 0.0f;
         float turnRate = 0.0f;
-        float rudderSpeed = 0.0f;
         float powerDistance = 0.0f;
         float rudderRate = 0.0f;
     };
@@ -57,7 +56,6 @@ namespace naval::defs {
         Propulsion propulsion;
         float halfLengthM = 0.0f;
         float halfBeamM = 0.0f;
-        float linearDamping = 0.0f;
         float angularDamping = 0.0f;
         float health = 0.0f; // hit points; 0 means the hull is not destructible
         moth_ui::Color color;

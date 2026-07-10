@@ -12,6 +12,30 @@ namespace naval {
         constexpr float kLateralGrip = 0.4f;    // 0 = slides like ice, 1 = no sideways slip
         constexpr float kTurnGain = 4.0f;       // how sharply heading error becomes yaw
         constexpr float kArrivalRadiusM = 20.0f; // stop powering once this close
+
+        // Shared handling character for every hull. Yaw authority follows a hump
+        // in forward speed: near nil dead in the water, peaking at kBestTurnFraction
+        // of the hull's top speed, then washing out toward flank — but flat-out
+        // still turns better than a standstill. A hull's turnRate is the peak;
+        // these scale it. Break them out to data only if a hull needs to differ.
+        constexpr float kMinTurnCoef = 0.03f;      // authority dead in the water
+        constexpr float kMaxTurnCoef = 0.4f;       // authority at top speed
+        constexpr float kBestTurnFraction = 0.5f;  // speed of peak turning, as a fraction of maxSpeed
+
+        // Yaw-authority multiplier for a hull making `speed` through the water,
+        // given its top speed. Rises kMinTurnCoef -> 1 up to the best-turn speed,
+        // then falls 1 -> kMaxTurnCoef out to maxSpeed. Zero if the hull cannot move.
+        float TurnCoef(float speed, float maxSpeed) {
+            if (maxSpeed <= 0.0f) {
+                return 0.0f;
+            }
+            float const bestSpeed = kBestTurnFraction * maxSpeed;
+            if (speed <= bestSpeed) {
+                return kMinTurnCoef + ((1.0f - kMinTurnCoef) * (speed / bestSpeed));
+            }
+            float const t = std::clamp((speed - bestSpeed) / (maxSpeed - bestSpeed), 0.0f, 1.0f);
+            return 1.0f + ((kMaxTurnCoef - 1.0f) * t);
+        }
     }
 
     void UpdatePropulsion(entt::registry& registry, float dt) {
@@ -28,6 +52,16 @@ namespace naval {
             float const lateral = b2Dot(body->GetLinearVelocity(), right);
             body->ApplyLinearImpulseToCenter((body->GetMass() * -lateral * kLateralGrip) * right, true);
 
+            // Form drag grows with the square of speed, so thrust and drag balance
+            // at exactly maxSpeed: the hull accelerates and asymptotes to its top
+            // speed rather than creeping toward it. dragCoef is picked so full
+            // thrust equals full drag right at maxSpeed.
+            if (propulsion.maxSpeed > 0.0f) {
+                b2Vec2 const velocity = body->GetLinearVelocity();
+                float const dragCoef = propulsion.maxThrust / (propulsion.maxSpeed * propulsion.maxSpeed);
+                body->ApplyForceToCenter((-dragCoef * velocity.Length()) * velocity, true);
+            }
+
             // The rudder always eases toward its commanded angle at the hull's
             // slew rate — however the command was set — so ordering it hard over
             // swings the blade across rather than snapping it.
@@ -41,11 +75,7 @@ namespace naval {
             if (!target.active) {
                 b2Vec2 const forward = body->GetWorldVector(b2Vec2{ 1.0f, 0.0f });
                 float const speed = std::abs(b2Dot(body->GetLinearVelocity(), forward));
-                float const authority = propulsion.rudderSpeed > 0.0f
-                                            ? std::clamp(speed / propulsion.rudderSpeed, 0.0f, 1.0f)
-                                            : 1.0f;
-                float const maxYaw = propulsion.minTurnRate +
-                                     ((propulsion.turnRate - propulsion.minTurnRate) * authority);
+                float const maxYaw = propulsion.turnRate * TurnCoef(speed, propulsion.maxSpeed);
                 body->SetAngularVelocity(helm.rudder * maxYaw);
                 body->ApplyForceToCenter((propulsion.maxThrust * helm.throttle) * forward, true);
                 continue;
@@ -65,11 +95,7 @@ namespace naval {
             // it has way on. forward is the body's bow direction.
             b2Vec2 const forward = body->GetWorldVector(b2Vec2{ 1.0f, 0.0f });
             float const speed = std::abs(b2Dot(body->GetLinearVelocity(), forward));
-            float const rudder = propulsion.rudderSpeed > 0.0f
-                                     ? std::clamp(speed / propulsion.rudderSpeed, 0.0f, 1.0f)
-                                     : 1.0f;
-            float const effectiveTurnRate = propulsion.minTurnRate +
-                                            ((propulsion.turnRate - propulsion.minTurnRate) * rudder);
+            float const effectiveTurnRate = propulsion.turnRate * TurnCoef(speed, propulsion.maxSpeed);
 
             // Turn toward the target, capped by the (speed-dependent) turn rate.
             float const desiredHeading = std::atan2(toTarget.y, toTarget.x);
@@ -87,16 +113,16 @@ namespace naval {
             direction.Normalize();
             float const throttle = std::clamp(dist / propulsion.powerDistance, 0.0f, 1.0f);
 
-            // Speed buys turn rate, but only up to rudderSpeed — past that the
-            // rudder is already saturated (see `rudder` above) and extra way just
-            // adds momentum to fight while coming about. So below rudderSpeed the
-            // ship drives freely to gain steerage way; once it has way on, thrust
-            // is gated on how well the bow points at the target. A big engine can
-            // no longer out-run the rudder and blast off before it has turned: it
-            // reaches rudderSpeed, coasts there while it swings the bow around,
-            // then opens up to full power as it lines up.
+            // Gate thrust so a big engine can't out-run the rudder. Below the
+            // best-turn speed the ship drives freely to gain steerage way; once it
+            // has that way on, thrust is gated on how well the bow points at the
+            // target — so it coasts at its best-turning speed while it swings the
+            // bow around, then opens up to full power as it lines up. steerage is
+            // that same best-turn speed the yaw hump peaks at.
+            float const bestSpeed = kBestTurnFraction * propulsion.maxSpeed;
+            float const steerage = bestSpeed > 0.0f ? std::clamp(speed / bestSpeed, 0.0f, 1.0f) : 1.0f;
             float const alignment = std::clamp(b2Dot(forward, direction), 0.0f, 1.0f);
-            float const thrustGate = alignment + ((1.0f - alignment) * (1.0f - rudder));
+            float const thrustGate = alignment + ((1.0f - alignment) * (1.0f - steerage));
             body->ApplyForceToCenter((propulsion.maxThrust * throttle * thrustGate) * forward, true);
         }
     }

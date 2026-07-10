@@ -14,17 +14,17 @@ namespace naval {
         b2Body* body = nullptr;
     };
 
-    // Engine characteristics — how hard a ship can drive and how it turns.
-    // Turning is rudder-like: yaw authority scales with forward speed, from a
-    // sluggish minTurnRate at a standstill up to turnRate once the ship is
-    // making rudderSpeed through the water. The navigation system reads these
-    // instead of assuming fixed constants, so different hulls handle
-    // differently.
+    // Engine characteristics — how hard a ship can drive and how it turns. Form
+    // drag balances thrust at maxSpeed, so the hull has a definite top speed.
+    // Turning is rudder-like: yaw authority follows a hump in forward speed —
+    // near nil at a standstill, peaking below top speed, washing out at flank —
+    // with turnRate as the peak. The hump's shape is shared handling character
+    // living in the propulsion system; per hull only the peak turn rate and the
+    // top speed differ, so different hulls still handle differently.
     struct Propulsion {
         float maxThrust = 0.0f;     // full-power forward force (newtons)
-        float minTurnRate = 0.0f;   // yaw rate at a standstill (radians / second)
-        float turnRate = 0.0f;      // yaw rate at or above rudderSpeed (radians / second)
-        float rudderSpeed = 0.0f;   // forward speed (m/s) at which turning saturates
+        float maxSpeed = 0.0f;      // top speed (m/s); drag balances thrust here
+        float turnRate = 0.0f;      // peak yaw rate (radians / second), at the best turning speed
         float powerDistance = 0.0f; // distance (metres) beyond which throttle is full
         float rudderRate = 0.0f;    // how fast the rudder swings toward its command (1/second)
     };

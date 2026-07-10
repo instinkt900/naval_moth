@@ -13,7 +13,6 @@ namespace naval {
         b2BodyDef bodyDef;
         bodyDef.type = b2_dynamicBody;
         bodyDef.position = position;
-        bodyDef.linearDamping = hull.linearDamping;
         bodyDef.angularDamping = hull.angularDamping;
         b2Body* body = world.CreateBody(&bodyDef);
 
@@ -26,9 +25,8 @@ namespace naval {
 
         registry.emplace<Physics>(entity, Physics{ body });
         registry.emplace<Propulsion>(entity, Propulsion{ hull.propulsion.maxThrust,
-                                                         hull.propulsion.minTurnRate,
+                                                         hull.propulsion.maxSpeed,
                                                          hull.propulsion.turnRate,
-                                                         hull.propulsion.rudderSpeed,
                                                          hull.propulsion.powerDistance,
                                                          hull.propulsion.rudderRate });
         registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM });
