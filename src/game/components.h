@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game/hull_shape.h"
+
 #include <box2d/box2d.h>
 #include <entt/entt.hpp>
 #include <moth_ui/utils/color.h>
@@ -56,6 +58,10 @@ namespace naval {
         moth_ui::Color color;     // hull fill colour
         float halfLengthM = 0.0f; // bow-stern half extent, metres
         float halfBeamM = 0.0f;   // port-starboard half extent, metres
+        float foreShoulder = kHullShoulder;         // fore shoulder position, factor of the half-length
+        float foreShoulderBeam = kHullShoulderBeam; // beam at the fore shoulder, factor of the half-beam
+        float aftShoulder = kHullShoulder;          // aft shoulder position, factor of the half-length
+        float aftShoulderBeam = kHullShoulderBeam;  // beam at the aft shoulder, factor of the half-beam
     };
 
     // A single weapon mounted on a ship. Static fields are resolved from the

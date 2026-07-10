@@ -2,6 +2,7 @@
 
 #include "game/components.h"
 #include "game/defs.h"
+#include "game/hull_shape.h"
 
 namespace naval {
     entt::entity SpawnHull(entt::registry& registry, b2World& world,
@@ -17,7 +18,10 @@ namespace naval {
         b2Body* body = world.CreateBody(&bodyDef);
 
         b2PolygonShape shape;
-        shape.SetAsBox(hull.halfLengthM, hull.halfBeamM);
+        auto const outline = HullOutline<b2Vec2>(hull.halfLengthM, hull.halfBeamM,
+                                                 hull.foreShoulder, hull.foreShoulderBeam,
+                                                 hull.aftShoulder, hull.aftShoulderBeam);
+        shape.Set(outline.data(), kHullVertexCount);
         b2FixtureDef fixtureDef;
         fixtureDef.shape = &shape;
         fixtureDef.density = 1.0f;
@@ -29,7 +33,9 @@ namespace naval {
                                                          hull.propulsion.turnRate,
                                                          hull.propulsion.powerDistance,
                                                          hull.propulsion.rudderRate });
-        registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM });
+        registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM,
+                                                         hull.foreShoulder, hull.foreShoulderBeam,
+                                                         hull.aftShoulder, hull.aftShoulderBeam });
         registry.emplace<Identity>(entity, Identity{ hullId });
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
         registry.emplace<Helm>(entity, Helm{});

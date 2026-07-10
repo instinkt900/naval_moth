@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game/hull_shape.h"
+
 #include <moth_ui/utils/color.h>
 
 #include <filesystem>
@@ -56,6 +58,10 @@ namespace naval::defs {
         Propulsion propulsion;
         float halfLengthM = 0.0f;
         float halfBeamM = 0.0f;
+        float foreShoulder = kHullShoulder;         // fore taper shoulder position, 0-1 factor of the half-length
+        float foreShoulderBeam = kHullShoulderBeam; // beam at the fore shoulder, 0-1 factor of the half-beam
+        float aftShoulder = kHullShoulder;          // aft taper shoulder position, 0-1 factor of the half-length
+        float aftShoulderBeam = kHullShoulderBeam;  // beam at the aft shoulder, 0-1 factor of the half-beam
         float angularDamping = 0.0f;
         float health = 0.0f; // hit points; 0 means the hull is not destructible
         moth_ui::Color color;

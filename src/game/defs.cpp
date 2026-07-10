@@ -33,6 +33,20 @@ namespace naval::defs {
                 throw std::runtime_error("naval data: " + message);
             }
         }
+
+        // Parses a [lengthFactor, beamFactor] shoulder pair, validating both stay
+        // in the range that keeps the hull polygon convex.
+        void ParseShoulder(nlohmann::json const& j, std::string const& id,
+                           std::string const& field, float& shoulder, float& beam) {
+            Require(j.is_array() && j.size() == 2,
+                    "hull '" + id + "' " + field + " must be [lengthFactor, beamFactor]");
+            float const l = j.at(0).get<float>();
+            float const b = j.at(1).get<float>();
+            Require(l > 0.0f && l < 1.0f, "hull '" + id + "' " + field + " length factor must be in (0,1)");
+            Require(b > 0.0f && b <= 1.0f, "hull '" + id + "' " + field + " beam factor must be in (0,1]");
+            shoulder = l;
+            beam = b;
+        }
     }
 
     Database Database::Load(std::filesystem::path const& dir) {
@@ -74,6 +88,21 @@ namespace naval::defs {
                     "hull '" + id + "' has thrust but no maxSpeed");
             h.halfLengthM = j.at("halfLengthM").get<float>();
             h.halfBeamM = j.at("halfBeamM").get<float>();
+            // Optional hull profile. Each shoulder is [lengthFactor, beamFactor]
+            // placing a taper shoulder. "shoulder" sets both ends symmetrically;
+            // "foreShoulder"/"aftShoulder" then override an individual end for an
+            // asymmetric hull. Absent means the default boat shape (hull_shape.h).
+            if (j.contains("shoulder")) {
+                ParseShoulder(j.at("shoulder"), id, "shoulder", h.foreShoulder, h.foreShoulderBeam);
+                h.aftShoulder = h.foreShoulder;
+                h.aftShoulderBeam = h.foreShoulderBeam;
+            }
+            if (j.contains("foreShoulder")) {
+                ParseShoulder(j.at("foreShoulder"), id, "foreShoulder", h.foreShoulder, h.foreShoulderBeam);
+            }
+            if (j.contains("aftShoulder")) {
+                ParseShoulder(j.at("aftShoulder"), id, "aftShoulder", h.aftShoulder, h.aftShoulderBeam);
+            }
             h.angularDamping = j.at("angularDamping").get<float>();
             h.health = j.value("health", 0.0f);
             h.color = ParseColor(j.at("color"));

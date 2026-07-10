@@ -2,14 +2,15 @@
 
 #include "game/camera.h"
 #include "game/components.h"
+#include "game/hull_shape.h"
 
 #include <moth_graphics/graphics/igraphics.h>
 #include <moth_ui/utils/rect.h>
 #include <moth_ui/utils/transform.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <vector>
 
 namespace naval {
     namespace {
@@ -66,59 +67,18 @@ namespace naval {
         float const halfLengthPx = camera.MToPx(renderable.halfLengthM);
         float const halfBeamPx = camera.MToPx(renderable.halfBeamM);
 
-        // Hull profile: half-beam at a point x along the keel (local +x is the
-        // bow). A rounded stern cap, parallel midships, and a sharp raked bow
-        // that tapers to a point — a sharp capsule. The silhouette is sampled
-        // from this profile into a filled polygon that rotates with the transform.
-        float const sternCapEnd = -halfLengthPx + halfBeamPx; // aft semicircle
-        float const bowStart = halfLengthPx * 0.83f;          // taper begins just fwd of amidships
-        auto halfBeamAt = [&](float x) -> float {
-            if (x <= sternCapEnd) {
-                float const d = x - sternCapEnd;
-                float const r2 = (halfBeamPx * halfBeamPx) - (d * d);
-                return r2 > 0.0f ? std::sqrt(r2) : 0.0f;
-            }
-            if (x >= bowStart) {
-                float const t = (halfLengthPx - x) / (halfLengthPx - bowStart);
-                return halfBeamPx * std::clamp(t, 0.0f, 1.0f);
-            }
-            return halfBeamPx;
-        };
-
-        // Walk the profile along the top edge fore-to-aft, then back along the
-        // bottom, into a closed ring. A zero-width cusp at a pointed end would
-        // duplicate the ring's first point, so drop it when it appears.
-        auto buildRing = [&](float xStern, float xBow, int segments) {
-            auto xAt = [&](int i) {
-                return xStern + ((xBow - xStern) * static_cast<float>(i) / static_cast<float>(segments));
-            };
-            std::vector<moth_ui::FloatVec2> ring;
-            ring.reserve((static_cast<size_t>(segments) * 2) + 2);
-            for (int i = 0; i <= segments; ++i) {
-                float const x = xAt(i);
-                ring.push_back({ x, halfBeamAt(x) });
-            }
-            for (int i = segments - 1; i >= 0; --i) {
-                float const x = xAt(i);
-                ring.push_back({ x, -halfBeamAt(x) });
-            }
-            if (std::abs(ring.front().x - ring.back().x) < 0.01f &&
-                std::abs(ring.front().y - ring.back().y) < 0.01f) {
-                ring.pop_back();
-            }
-            return ring;
-        };
-
-        // The whole hull as one polygon, then the bow overlaid in the heading
-        // colour from the mark line to the tip so the facing stays readable.
-        constexpr int kHullSegments = 32;
-        auto const hull = buildRing(-halfLengthPx, halfLengthPx, kHullSegments);
+        // The boat outline: a beam bulge amidships tapering to a point at each
+        // end (see hull_shape.h). The same eight vertices are the collision
+        // fixture, so the silhouette matches what the ship bumps into.
+        auto const outline = HullOutline<moth_ui::FloatVec2>(halfLengthPx, halfBeamPx,
+                                                             renderable.foreShoulder, renderable.foreShoulderBeam,
+                                                             renderable.aftShoulder, renderable.aftShoulderBeam);
         graphics.SetColor(renderable.color);
-        graphics.DrawFillPolygonF(hull.data(), hull.size());
+        graphics.DrawFillPolygonF(outline.data(), outline.size());
 
-        constexpr int kBowSegments = 8;
-        float const bowMarkStart = halfLengthPx * 0.75f;
-        auto const bow = buildRing(bowMarkStart, halfLengthPx, kBowSegments);
+        // Overlay the bow in the heading colour — the forward triangle from the
+        // two taper shoulders to the tip — so the ship's facing stays readable.
+        std::array<moth_ui::FloatVec2, 3> const bow{ { outline[0], outline[1], outline[7] } };
         graphics.SetColor(kBow);
         graphics.DrawFillPolygonF(bow.data(), bow.size());
 

@@ -3,7 +3,7 @@
         "projectile": "basic_shell",
         "cooldown": 0.1,
         "range": 130.0,
-        "arcDegrees": 360.0
+        "arcDegrees": 36.0
     },
     "broadside_gun": {
         "projectile": "large_shell",
@@ -16,5 +16,11 @@
         "cooldown": 2.0,
         "range": 15.0,
         "arcDegrees": 35.0
+    },
+    "big_gun": {
+        "projectile": "giant_shell",
+        "cooldown": 8.0,
+        "range": 1400.0,
+        "arcDegrees": 15.0
     }
 }
