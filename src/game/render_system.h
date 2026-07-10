@@ -20,6 +20,9 @@ namespace naval {
     // The dashed course line and marker for a ship's active move target.
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
+    // Every hull's fading wake, drawn on the water beneath the hulls.
+    void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera);
+
     // A single hull with its bow marker.
     void DrawShip(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 

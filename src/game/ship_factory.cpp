@@ -39,6 +39,7 @@ namespace naval {
         registry.emplace<Identity>(entity, Identity{ hullId });
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
         registry.emplace<Helm>(entity, Helm{});
+        registry.emplace<Wake>(entity, Wake{});
         registry.emplace<Combatant>(entity, Combatant{ faction });
 
         Armament armament;

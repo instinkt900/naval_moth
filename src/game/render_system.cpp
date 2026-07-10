@@ -20,6 +20,12 @@ namespace naval {
         const moth_ui::Color kLineColor{ 0.55f, 0.65f, 0.75f, 1.0f };
         const moth_ui::Color kArcColor{ 0.35f, 0.45f, 0.55f, 0.6f };       // firing arc at rest
         const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f }; // arc with a target in it
+
+        // --- wake ---
+        const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
+        constexpr float kWakeAlpha = 0.22f;         // opacity of a fresh mark — low so it stays subtle
+        constexpr float kWakeStartBeamFrac = 0.25f; // fresh mark radius, fraction of the half-beam
+        constexpr float kWakeEndBeamFrac = 3.0f;    // faded mark radius (the wake widens as it dissipates)
     }
 
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
@@ -52,6 +58,35 @@ namespace naval {
         graphics.DrawFillCircleF(targetPx, 3.0f);
         graphics.DrawRectF(moth_ui::FloatRect{ { targetPx.x - 8.0f, targetPx.y - 8.0f },
                                                { targetPx.x + 8.0f, targetPx.y + 8.0f } });
+    }
+
+    void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera) {
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        // The scene otherwise draws opaque (BlendMode::Replace ignores alpha), so
+        // switch to alpha blending for the fading marks, then hand it back so the
+        // rest of the frame is unaffected.
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+        for (auto entity : registry.view<Renderable, Wake>()) {
+            auto const& renderable = registry.get<Renderable>(entity);
+            auto const& wake = registry.get<Wake>(entity);
+            float const startR = renderable.halfBeamM * kWakeStartBeamFrac;
+            float const endR = renderable.halfBeamM * kWakeEndBeamFrac;
+            // Each mark fades and widens as it ages: a fresh drop is a tight,
+            // brighter spot, an old one a broad faint patch of dissipating foam.
+            // The fade is a smoothstep on remaining life so alpha eases into zero
+            // with no slope at the end — the mark dissolves rather than winking
+            // out when it is finally culled.
+            for (auto const& mark : wake.marks) {
+                float const t = std::clamp(mark.age / kWakeLifetimeS, 0.0f, 1.0f);
+                float const life = 1.0f - t;
+                float const fade = life * life * (3.0f - (2.0f * life)); // smoothstep, soft landing at 0
+                graphics.SetColor(moth_ui::Color{ kWakeColor.r, kWakeColor.g, kWakeColor.b,
+                                                  kWakeAlpha * fade });
+                float const radiusM = startR + ((endR - startR) * t);
+                graphics.DrawFillCircleF(camera.WorldToScreen(mark.position), camera.MToPx(radiusM));
+            }
+        }
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
     void DrawShip(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {

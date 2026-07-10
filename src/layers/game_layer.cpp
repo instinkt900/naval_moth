@@ -5,6 +5,7 @@
 #include "game/propulsion_system.h"
 #include "game/render_system.h"
 #include "game/ship_factory.h"
+#include "game/wake_system.h"
 
 #include <moth_ui/events/event_dispatch.h>
 #include <moth_ui/utils/transform.h>
@@ -147,10 +148,16 @@ namespace naval {
         UpdateWeapons(m_registry, dt);
         UpdateProjectiles(m_registry, dt);
         m_world.Step(dt, 8, 3);
+
+        // After the step so marks are dropped at the hull's settled position.
+        UpdateWake(m_registry, dt);
     }
 
     void GameLayer::Draw() {
         m_terrain.Draw(m_graphics, m_camera);
+
+        // Wakes on the water, beneath everything else the ships lay down.
+        DrawWakes(m_graphics, m_registry, m_camera);
 
         // Firing arcs beneath the hulls, for every armed ship still alive.
         for (auto ship : m_registry.view<Physics, Armament>()) {

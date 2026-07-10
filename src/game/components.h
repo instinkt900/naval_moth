@@ -64,6 +64,25 @@ namespace naval {
         float aftShoulderBeam = kHullShoulderBeam;  // beam at the aft shoulder, factor of the half-beam
     };
 
+    // How long a wake mark lingers before it has fully faded. Shared by the wake
+    // system (which expires marks past this age) and the renderer (which fades
+    // each mark over it), so the two never disagree.
+    inline constexpr float kWakeLifetimeS = 40.0f;
+
+    // A fading wake trailing a moving hull. Marks are dropped at the ship's
+    // centre as it makes way, spaced by distance so the trail stays even at any
+    // speed, and fade out over kWakeLifetimeS. Purely cosmetic: the wake system
+    // maintains it, the renderer draws it.
+    struct Wake {
+        struct Mark {
+            b2Vec2 position{ 0.0f, 0.0f }; // world point (m) where the mark was dropped
+            float age = 0.0f;              // seconds since it was dropped
+        };
+        std::vector<Mark> marks;         // oldest first
+        b2Vec2 lastDrop{ 0.0f, 0.0f };   // centre position of the last mark, for distance spacing
+        bool seeded = false;             // true once lastDrop holds a real position
+    };
+
     // A single weapon mounted on a ship. Static fields are resolved from the
     // database at spawn; the runtime fields update as it engages. bearing/arc
     // are relative to the bow — the arc's world centre is bodyAngle + bearing.
