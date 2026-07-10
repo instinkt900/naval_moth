@@ -1,7 +1,7 @@
 {
     "scout": {
         "propulsion": {
-            "maxThrust": 200.0,
+            "maxThrust": 400.0,
             "maxSpeedKnots": 36.0,
             "turnRate": 0.5,
             "powerDistance": 100.0,
@@ -17,7 +17,7 @@
     },
     "frigate": {
         "propulsion": {
-            "maxThrust": 400.0,
+            "maxThrust": 2000.0,
             "maxSpeedKnots": 25.0,
             "turnRate": 0.1,
             "powerDistance": 100.0,

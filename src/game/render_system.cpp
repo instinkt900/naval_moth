@@ -24,8 +24,8 @@ namespace naval {
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
         constexpr float kWakeAlpha = 0.22f;         // opacity of a fresh mark — low so it stays subtle
-        constexpr float kWakeStartBeamFrac = 0.25f; // fresh mark radius, fraction of the half-beam
-        constexpr float kWakeEndBeamFrac = 3.0f;    // faded mark radius (the wake widens as it dissipates)
+        constexpr float kWakeStartBeamFrac = 0.5f; // fresh mark radius, fraction of the half-beam
+        constexpr float kWakeEndBeamFrac = 12.0f;    // faded mark radius (the wake widens as it dissipates)
 
         // --- splash ---
         const moth_ui::Color kSplashColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per splash

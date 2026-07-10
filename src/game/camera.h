@@ -12,7 +12,7 @@ namespace naval {
     struct Camera {
         b2Vec2 center{ 0.0f, 0.0f };               // world point held at the view centre (m)
         moth_ui::FloatVec2 viewSize{ 0.0f, 0.0f }; // view extent in pixels
-        float pixelsPerMeter = 1.0f;              // world-to-screen scale (zoom)
+        float pixelsPerMeter = 0.5f;              // world-to-screen scale (zoom)
 
         moth_ui::FloatVec2 WorldToScreen(b2Vec2 world) const {
             return { ((world.x - center.x) * pixelsPerMeter) + (viewSize.x * 0.5f),
