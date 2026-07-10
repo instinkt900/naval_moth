@@ -77,8 +77,8 @@ namespace naval {
     bool GameLayer::OnMouseWheel(moth_ui::EventMouseWheel const& event) {
         // Wheel drives zoom: each notch scales the view about its centre.
         constexpr float kZoomStep = 1.15f; // per notch
-        constexpr float kMinZoom = 3.0f;   // px/m
-        constexpr float kMaxZoom = 80.0f;  // px/m
+        constexpr float kMinZoom = 0.3f;   // px/m
+        constexpr float kMaxZoom = 8.0f;  // px/m
         float const notches = static_cast<float>(event.GetDelta().y);
         m_camera.pixelsPerMeter = std::clamp(m_camera.pixelsPerMeter * std::pow(kZoomStep, notches),
                                              kMinZoom, kMaxZoom);

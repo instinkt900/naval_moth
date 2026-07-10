@@ -11,7 +11,7 @@ namespace naval {
     namespace {
         constexpr float kLateralGrip = 0.4f;    // 0 = slides like ice, 1 = no sideways slip
         constexpr float kTurnGain = 4.0f;       // how sharply heading error becomes yaw
-        constexpr float kArrivalRadiusM = 0.8f; // stop powering once this close
+        constexpr float kArrivalRadiusM = 20.0f; // stop powering once this close
     }
 
     void UpdatePropulsion(entt::registry& registry) {
@@ -67,13 +67,16 @@ namespace naval {
             direction.Normalize();
             float const throttle = std::clamp(dist / propulsion.powerDistance, 0.0f, 1.0f);
 
-            // Far from the target it's worth driving hard even when pointing the
-            // wrong way: speed buys turn rate (rudder), so accelerating across or
-            // away lets the ship come about faster and carve toward the target.
-            // Close in (throttle < 1), gate thrust on how well the bow points at
-            // the target so the final approach eases in rather than launching.
+            // Speed buys turn rate, but only up to rudderSpeed — past that the
+            // rudder is already saturated (see `rudder` above) and extra way just
+            // adds momentum to fight while coming about. So below rudderSpeed the
+            // ship drives freely to gain steerage way; once it has way on, thrust
+            // is gated on how well the bow points at the target. A big engine can
+            // no longer out-run the rudder and blast off before it has turned: it
+            // reaches rudderSpeed, coasts there while it swings the bow around,
+            // then opens up to full power as it lines up.
             float const alignment = std::clamp(b2Dot(forward, direction), 0.0f, 1.0f);
-            float const thrustGate = alignment + ((1.0f - alignment) * throttle);
+            float const thrustGate = alignment + ((1.0f - alignment) * (1.0f - rudder));
             body->ApplyForceToCenter((propulsion.maxThrust * throttle * thrustGate) * forward, true);
         }
     }

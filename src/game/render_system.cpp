@@ -71,7 +71,7 @@ namespace naval {
         // that tapers to a point — a sharp capsule. The silhouette is sampled
         // from this profile into a filled polygon that rotates with the transform.
         float const sternCapEnd = -halfLengthPx + halfBeamPx; // aft semicircle
-        float const bowStart = halfLengthPx * 0.60f;          // taper begins just fwd of amidships
+        float const bowStart = halfLengthPx * 0.70f;          // taper begins just fwd of amidships
         auto halfBeamAt = [&](float x) -> float {
             if (x <= sternCapEnd) {
                 float const d = x - sternCapEnd;
@@ -117,7 +117,7 @@ namespace naval {
         graphics.DrawFillPolygonF(hull.data(), hull.size());
 
         constexpr int kBowSegments = 8;
-        float const bowMarkStart = halfLengthPx * 0.55f;
+        float const bowMarkStart = halfLengthPx * 0.75f;
         auto const bow = buildRing(bowMarkStart, halfLengthPx, kBowSegments);
         graphics.SetColor(kBow);
         graphics.DrawFillPolygonF(bow.data(), bow.size());

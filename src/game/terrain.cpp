@@ -10,18 +10,27 @@
 
 namespace naval {
     namespace {
-        // --- world scale ---
-        constexpr float kCellM = 6.0f;    // metres per marching-squares cell
-        constexpr int kChunkCells = 12;   // cells per chunk edge
-        constexpr float kChunkM = kCellM * static_cast<float>(kChunkCells);
-
         // --- noise shaping ---
-        constexpr float kNoiseFreq = 0.008f; // world frequency (1/m); lower = larger landmasses
+        constexpr float kNoiseFreq = 0.0003f; // world frequency (1/m); lower = larger landmasses
         constexpr int kOctaves = 4;
         constexpr float kLacunarity = 2.0f;
         constexpr float kGain = 0.5f;
         constexpr float kSeaLevel = 0.15f;      // fBm above this is land; higher = less land
         constexpr float kShallowLevel = -0.18f; // height down to here is shallow water (lower = wider rim)
+
+        // --- world scale ---
+        // The marching-squares cell size is derived from the noise scale rather
+        // than fixed in metres: a cell spans a constant fraction of the dominant
+        // landmass wavelength (~1/kNoiseFreq), so coastline fidelity — and hence
+        // the triangle and collision-edge count per landmass — stays constant when
+        // the world is re-scaled by changing kNoiseFreq. A cell size fixed in
+        // metres instead explodes the cell count as the world grows, which is what
+        // tanks performance at low zoom. ~20 cells per wavelength reproduces the
+        // fidelity the small-scale world shipped with.
+        constexpr float kCellsPerWavelength = 20.0f;
+        constexpr float kCellM = 1.0f / (kNoiseFreq * kCellsPerWavelength); // ~167 m
+        constexpr int kChunkCells = 12;   // cells per chunk edge
+        constexpr float kChunkM = kCellM * static_cast<float>(kChunkCells);
 
         // Keep a clear harbour around the origin so a ship never spawns embedded.
         constexpr float kSpawnClearM = 45.0f;

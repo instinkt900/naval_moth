@@ -30,13 +30,13 @@ namespace naval {
     // never queued. Cleared on arrival so the ship coasts to a stop.
     struct MoveTarget {
         b2Vec2 point{ 0.0f, 0.0f }; // world space (metres)
-        bool active = false;
+        bool active = false;        // true while a destination is set; false = coast/idle
     };
 
     // How to draw the hull. The long axis runs bow-to-stern along local +x
     // (the body's forward direction).
     struct Renderable {
-        moth_ui::Color color;
+        moth_ui::Color color;     // hull fill colour
         float halfLengthM = 0.0f; // bow-stern half extent, metres
         float halfBeamM = 0.0f;   // port-starboard half extent, metres
     };
@@ -55,10 +55,10 @@ namespace naval {
         float cooldown = 0.0f;              // s between shots
 
         // Projectile spec, copied from the database so firing needs no lookup.
-        float projectileSpeed = 0.0f;
-        float projectileRadiusM = 0.0f;
-        float projectileDamage = 0.0f;
-        moth_ui::Color projectileColor;
+        float projectileSpeed = 0.0f;   // m/s the shot travels at
+        float projectileRadiusM = 0.0f; // shot draw radius, metres
+        float projectileDamage = 0.0f;  // hit points removed on impact
+        moth_ui::Color projectileColor; // shot draw colour
 
         float cooldownRemaining = 0.0f; // s until it can fire again
         bool hasTarget = false;         // a target sits in arc+range this tick
@@ -105,7 +105,7 @@ namespace naval {
         float remaining = 0.0f;        // m of travel left before it expires
         float radiusM = 0.0f;          // draw radius, metres
         float damage = 0.0f;           // hit points removed from the hull it strikes
-        moth_ui::Color color;
+        moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike
     };
 }

@@ -1,15 +1,15 @@
 {
     "cutter": {
         "propulsion": {
-            "maxThrust": 8.0,
+            "maxThrust": 1800.0,
             "minTurnRate": 0.1,
-            "turnRate": 0.5,
-            "rudderSpeed": 1.0,
-            "powerDistance": 8.0
+            "turnRate": 0.1,
+            "rudderSpeed": 0.0,
+            "powerDistance": 100.0
         },
-        "halfLengthM": 3.0,
-        "halfBeamM": 0.5,
-        "linearDamping": 0.5,
+        "halfLengthM": 45.0,
+        "halfBeamM": 5.0,
+        "linearDamping": 0.1,
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
