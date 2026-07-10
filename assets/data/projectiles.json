@@ -4,5 +4,11 @@
         "radiusM": 0.1,
         "damage": 5.0,
         "color": [1.0, 0.9, 0.5, 1.0]
+    },
+    "basic_shell": {
+        "speed": 200.0,
+        "radiusM": 1.0,
+        "damage": 15.0,
+        "color": [1.0, 0.9, 0.5, 1.0]
     }
 }

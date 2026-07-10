@@ -1,21 +1,21 @@
 {
     "cutter": {
         "propulsion": {
-            "maxThrust": 1800.0,
-            "minTurnRate": 0.1,
-            "turnRate": 0.1,
-            "rudderSpeed": 0.0,
-            "powerDistance": 100.0
+            "maxThrust": 200.0,
+            "minTurnRate": 0.05,
+            "turnRate": 0.2,
+            "rudderSpeed": 20.0,
+            "powerDistance": 100.0,
+            "rudderRate": 0.6
         },
         "halfLengthM": 45.0,
         "halfBeamM": 5.0,
-        "linearDamping": 0.1,
+        "linearDamping": 0.02,
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "ahead_gun", "bearingDegrees": 0.0, "forwardM": 2.8, "lateralM": 0 },
-            { "weapon": "broadside_cannon", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -0.5 },
-            { "weapon": "broadside_cannon", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 0.5 }
+            { "weapon": "broadside_gun", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -5.0 },
+            { "weapon": "broadside_gun", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 5.0 }
         ]
     },
     "hulk": {
@@ -24,7 +24,8 @@
             "minTurnRate": 0.0,
             "turnRate": 0.0,
             "rudderSpeed": 1.0,
-            "powerDistance": 1.0
+            "powerDistance": 1.0,
+            "rudderRate": 0.25
         },
         "halfLengthM": 3.0,
         "halfBeamM": 0.8,

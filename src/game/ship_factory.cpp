@@ -29,9 +29,11 @@ namespace naval {
                                                          hull.propulsion.minTurnRate,
                                                          hull.propulsion.turnRate,
                                                          hull.propulsion.rudderSpeed,
-                                                         hull.propulsion.powerDistance });
+                                                         hull.propulsion.powerDistance,
+                                                         hull.propulsion.rudderRate });
         registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM });
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
+        registry.emplace<Helm>(entity, Helm{});
         registry.emplace<Combatant>(entity, Combatant{ faction });
 
         Armament armament;

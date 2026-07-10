@@ -38,6 +38,10 @@ namespace naval {
         // Scatter enemies across open water in a ring around the player start.
         void SpawnEnemies();
 
+        // ImGui window giving direct throttle and rudder control of the player
+        // ship, as an alternative to clicking waypoints.
+        void DrawHelmPanel();
+
         moth_graphics::graphics::IGraphics& m_graphics;
         Camera m_camera;
         // Held WASD state; the camera pans continuously while any is down.

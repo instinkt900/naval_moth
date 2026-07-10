@@ -60,6 +60,24 @@ Weapons acquire targets on their own and fire automatically, respecting their
 cooldown, whenever a valid target sits inside their arc and firing range.
 Different weapons on the same ship target independently.
 
+### Per-weapon controls
+
+Automatic fire is the default, but the player can take hands-on command of each
+gun the active ship carries. The control panel lists every weapon and, per
+weapon, offers:
+
+- a toggle for whether it **draws its firing arc**, so the display can be kept
+  clean or a single gun's coverage highlighted;
+- a toggle for **automatic fire** — on, it engages on its own as above; off, it
+  holds fire until told;
+- a **fire button** to shoot on command (still bound by cooldown and a valid
+  target in arc and range); and
+- a **target readout** for whatever contact the gun has locked: range, speed,
+  bearing, heading, and contact type — the tactical picture for that weapon.
+
+Controls are independent per weapon, so one gun can free-fire while another is
+held for a manual salvo.
+
 ### Range band
 
 Range is not a single number but a band with four zones, so distance shapes both
@@ -173,3 +191,30 @@ as early as possible.
   behaviour.
 - **M7 — Other captains.** Networked player ships.
 - **M8 — Beneath the surface.** Submarines, torpedoes, and sonar.
+
+## Musings
+
+*Undirected ideas, not committed scope — a place to think out loud.*
+
+**Hunt-and-sink as information warfare.** A multiplayer mode where two players
+share a large sea and the whole game is *finding* each other before you can
+fight. Sinking the enemy is the goal, but the hard part is knowing where they
+are. Position is hidden by default; you build a picture of the map from
+imperfect, decaying sources rather than seeing the other ship outright.
+
+The fun would live in the detection layer, borrowing from modern combat:
+
+- **Radar** — active sweeps reveal contacts but announce your own position to
+  anyone listening.
+- **Radio / signals intelligence** — intercepting emissions to bearing-fix an
+  enemy who's being noisy, trading silence for stealth.
+- **Scouting assets** — drones, helicopters, spotter aircraft that extend your
+  sensor reach out beyond the horizon at some cost or risk.
+- **Intelligence reports & area knowledge** — periodic or purchased hints,
+  terrain and shipping-lane knowledge that narrows the search.
+
+The tension is emissions control versus information: every way of learning where
+the enemy is tends to give away where *you* are. A match becomes a stalking
+game — go loud and find them fast but get found, or stay dark and hunt patiently.
+Fits naturally on top of the momentum-driven handling and the composable-ship
+model, and would lean hard on the later networked-play and sensor work.

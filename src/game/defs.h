@@ -49,6 +49,7 @@ namespace naval::defs {
         float turnRate = 0.0f;
         float rudderSpeed = 0.0f;
         float powerDistance = 0.0f;
+        float rudderRate = 0.0f;
     };
 
     // A ship class: how it moves, how it draws, and what it carries.

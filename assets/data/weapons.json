@@ -5,6 +5,12 @@
         "range": 8.0,
         "arcDegrees": 50.0
     },
+    "broadside_gun": {
+        "projectile": "basic_shell",
+        "cooldown": 2.0,
+        "range": 300.0,
+        "arcDegrees": 65.0
+    },
     "broadside_cannon": {
         "projectile": "cannonball",
         "cooldown": 2.0,

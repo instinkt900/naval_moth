@@ -8,6 +8,9 @@
 
 #include <moth_ui/events/event_dispatch.h>
 
+#include <imgui.h>
+#include <spdlog/fmt/fmt.h>
+
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -66,6 +69,11 @@ namespace naval {
     }
 
     bool GameLayer::OnMouseDown(moth_ui::EventMouseDown const& event) {
+        // Let ImGui swallow clicks that land on the helm panel, so interacting
+        // with the controls never drops a waypoint on the sea behind them.
+        if (ImGui::GetIO().WantCaptureMouse) {
+            return false;
+        }
         auto const pos = event.GetPosition();
         auto& target = m_registry.get<MoveTarget>(m_ship);
         // Each click moves the single target; nothing is queued.
@@ -75,6 +83,11 @@ namespace naval {
     }
 
     bool GameLayer::OnMouseWheel(moth_ui::EventMouseWheel const& event) {
+        // Scrolling over an ImGui window belongs to it (e.g. dragging a slider),
+        // not to the camera zoom.
+        if (ImGui::GetIO().WantCaptureMouse) {
+            return false;
+        }
         // Wheel drives zoom: each notch scales the view about its centre.
         constexpr float kZoomStep = 1.15f; // per notch
         constexpr float kMinZoom = 0.3f;   // px/m
@@ -121,7 +134,7 @@ namespace naval {
         // Stream land in/out around the (possibly moved) camera view.
         m_terrain.Update(m_camera);
 
-        UpdatePropulsion(m_registry);
+        UpdatePropulsion(m_registry, dt);
         UpdateWeapons(m_registry, dt);
         UpdateProjectiles(m_registry, dt);
         m_world.Step(dt, 8, 3);
@@ -144,5 +157,91 @@ namespace naval {
         }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
         DrawProjectiles(m_graphics, m_registry, m_camera);
+
+        DrawHelmPanel();
+    }
+
+    void GameLayer::DrawHelmPanel() {
+        auto& helm = m_registry.get<Helm>(m_ship);
+        auto& target = m_registry.get<MoveTarget>(m_ship);
+
+        ImGui::Begin("Helm");
+        if (target.active) {
+            ImGui::TextUnformatted("Autopilot: steering to waypoint");
+            if (ImGui::Button("Take the helm")) {
+                target.active = false;
+            }
+        } else {
+            ImGui::TextUnformatted("Manual control");
+        }
+        ImGui::Separator();
+
+        // Speed along the keel, signed so making sternway reads negative, shown
+        // in knots for flavour (1 m/s = 1.94384 kn).
+        constexpr float kMetresPerSecToKnots = 1.94384f;
+        b2Body* body = m_registry.get<Physics>(m_ship).body;
+        b2Vec2 const forward = body->GetWorldVector(b2Vec2{ 1.0f, 0.0f });
+        float const speedKnots = b2Dot(body->GetLinearVelocity(), forward) * kMetresPerSecToKnots;
+        ImGui::TextUnformatted(fmt::format("Speed: {:.1f} kn", speedKnots).c_str());
+        ImGui::Separator();
+
+        // Engine-order telegraph: quick throttle presets above the slider. Five
+        // evenly-spaced bells each way — each step is 20% of full power — with
+        // Flank at the rail (±1). Ahead is positive throttle, astern negative;
+        // every order takes manual control, like nudging the slider. The bell
+        // names are traditional and don't map to literal fractions.
+        auto order = [&](char const* label, float throttle) {
+            if (ImGui::Button(label)) {
+                helm.throttle = throttle;
+                target.active = false;
+            }
+        };
+        auto bells = [&](float sign) {
+            order("1/3", sign * 0.2f);   ImGui::SameLine();
+            order("2/3", sign * 0.4f);   ImGui::SameLine();
+            order("Std", sign * 0.6f);   ImGui::SameLine();
+            order("Full", sign * 0.8f);  ImGui::SameLine();
+            order("Flank", sign * 1.0f);
+        };
+
+        ImGui::TextUnformatted("Ahead");
+        ImGui::PushID("ahead");
+        bells(1.0f);
+        ImGui::PopID();
+
+        if (ImGui::Button("Stop")) {
+            helm.throttle = 0.0f;
+            target.active = false;
+        }
+
+        ImGui::TextUnformatted("Astern");
+        ImGui::PushID("astern");
+        bells(-1.0f);
+        ImGui::PopID();
+
+        // Grabbing either control drops the waypoint so manual input takes over;
+        // clicking the sea re-engages the autopilot.
+        if (ImGui::SliderFloat("Throttle", &helm.throttle, -1.0f, 1.0f, "%.2f")) {
+            target.active = false;
+        }
+        if (ImGui::SliderFloat("Rudder (ordered)", &helm.rudderCmd, -1.0f, 1.0f, "%.2f")) {
+            target.active = false;
+        }
+
+        // The actual blade position, read-only, so its lag behind the order is
+        // visible as the rudder swings across.
+        ImGui::BeginDisabled();
+        ImGui::SliderFloat("Rudder (actual)", &helm.rudder, -1.0f, 1.0f, "%.2f");
+        ImGui::EndDisabled();
+
+        if (ImGui::Button("All stop")) {
+            helm.throttle = 0.0f;
+            helm.rudderCmd = 0.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Midships")) {
+            helm.rudderCmd = 0.0f;
+        }
+        ImGui::End();
     }
 }

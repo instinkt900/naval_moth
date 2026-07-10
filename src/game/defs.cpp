@@ -68,6 +68,7 @@ namespace naval::defs {
             h.propulsion.turnRate = jp.at("turnRate").get<float>();
             h.propulsion.rudderSpeed = jp.at("rudderSpeed").get<float>();
             h.propulsion.powerDistance = jp.at("powerDistance").get<float>();
+            h.propulsion.rudderRate = jp.at("rudderRate").get<float>();
             h.halfLengthM = j.at("halfLengthM").get<float>();
             h.halfBeamM = j.at("halfBeamM").get<float>();
             h.linearDamping = j.at("linearDamping").get<float>();

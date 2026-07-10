@@ -24,13 +24,28 @@ namespace naval {
         float turnRate = 0.0f;      // yaw rate at or above rudderSpeed (radians / second)
         float rudderSpeed = 0.0f;   // forward speed (m/s) at which turning saturates
         float powerDistance = 0.0f; // distance (metres) beyond which throttle is full
+        float rudderRate = 0.0f;    // how fast the rudder swings toward its command (1/second)
     };
 
     // The single commanded destination. Each click replaces it — targets are
-    // never queued. Cleared on arrival so the ship coasts to a stop.
+    // never queued. Cleared on arrival so the ship coasts to a stop. While a
+    // target is active the autopilot has the helm; clearing it hands control to
+    // the manual Helm inputs below.
     struct MoveTarget {
         b2Vec2 point{ 0.0f, 0.0f }; // world space (metres)
         bool active = false;        // true while a destination is set; false = coast/idle
+    };
+
+    // Direct manual control of a ship, an alternative to the waypoint autopilot.
+    // Throttle is signed — negative drives astern. The rudder has a commanded
+    // angle the helm turns toward and an actual angle that slews to it over time
+    // at the hull's rudderRate, so "hard a-starboard" swings the rudder across
+    // rather than snapping it. Both are normalised to [-1, 1]; +rudder turns to
+    // starboard. Used only while MoveTarget is inactive.
+    struct Helm {
+        float throttle = 0.0f;  // commanded thrust, [-1, 1]; negative = astern
+        float rudderCmd = 0.0f; // commanded rudder, [-1, 1]; + = starboard
+        float rudder = 0.0f;    // actual rudder position, slews toward rudderCmd
     };
 
     // How to draw the hull. The long axis runs bow-to-stern along local +x

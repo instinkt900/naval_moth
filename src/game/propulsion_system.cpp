@@ -14,12 +14,13 @@ namespace naval {
         constexpr float kArrivalRadiusM = 20.0f; // stop powering once this close
     }
 
-    void UpdatePropulsion(entt::registry& registry) {
-        auto view = registry.view<Physics, Propulsion, MoveTarget>();
+    void UpdatePropulsion(entt::registry& registry, float dt) {
+        auto view = registry.view<Physics, Propulsion, MoveTarget, Helm>();
         for (auto entity : view) {
             b2Body* body = view.get<Physics>(entity).body;
             auto const& propulsion = view.get<Propulsion>(entity);
             auto& target = view.get<MoveTarget>(entity);
+            auto& helm = view.get<Helm>(entity);
 
             // Naval feel: bleed off sideways velocity each tick so the hull
             // tracks along its keel instead of drifting like a puck.
@@ -27,7 +28,26 @@ namespace naval {
             float const lateral = b2Dot(body->GetLinearVelocity(), right);
             body->ApplyLinearImpulseToCenter((body->GetMass() * -lateral * kLateralGrip) * right, true);
 
+            // The rudder always eases toward its commanded angle at the hull's
+            // slew rate — however the command was set — so ordering it hard over
+            // swings the blade across rather than snapping it.
+            float const rudderStep = propulsion.rudderRate * dt;
+            helm.rudder += std::clamp(helm.rudderCmd - helm.rudder, -rudderStep, rudderStep);
+
+            // Without a waypoint the ship answers the manual helm: signed
+            // throttle drives fore and aft, and the rudder yaws the hull with
+            // authority that grows with steerage way — the same speed-scaled
+            // model the autopilot turn below uses.
             if (!target.active) {
+                b2Vec2 const forward = body->GetWorldVector(b2Vec2{ 1.0f, 0.0f });
+                float const speed = std::abs(b2Dot(body->GetLinearVelocity(), forward));
+                float const authority = propulsion.rudderSpeed > 0.0f
+                                            ? std::clamp(speed / propulsion.rudderSpeed, 0.0f, 1.0f)
+                                            : 1.0f;
+                float const maxYaw = propulsion.minTurnRate +
+                                     ((propulsion.turnRate - propulsion.minTurnRate) * authority);
+                body->SetAngularVelocity(helm.rudder * maxYaw);
+                body->ApplyForceToCenter((propulsion.maxThrust * helm.throttle) * forward, true);
                 continue;
             }
 
