@@ -23,6 +23,9 @@ namespace naval {
     // Every hull's fading wake, drawn on the water beneath the hulls.
     void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera);
 
+    // Every splash left by a spent shot, expanding and fading on the water.
+    void DrawSplashes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera);
+
     // A single hull with its bow marker.
     void DrawShip(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 

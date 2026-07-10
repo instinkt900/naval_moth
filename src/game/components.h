@@ -156,6 +156,20 @@ namespace naval {
         float max = 0.0f;
     };
 
+    // A destroyed hull's death sequence, shared by the sinking system (which
+    // ages the wreck and finally removes it) and the renderer (which greys the
+    // hull, then fades it). The wreck burns charred grey for kSinkBurnS, then
+    // alpha-fades under the sea over kSinkDurationS; total life is their sum.
+    inline constexpr float kSinkBurnS = 5.0f;      // grey/burning before it starts to go down
+    inline constexpr float kSinkDurationS = 10.0f; // fade-out once it begins sinking
+
+    // Marks a hull that has been destroyed and is playing out its death
+    // sequence. It is no longer a combatant and carries no armament; the sinking
+    // system ages it and removes it once it has fully gone under.
+    struct Sinking {
+        float age = 0.0f; // seconds since it was destroyed
+    };
+
     // A projectile in flight. Straight-shot: constant velocity, expires once it
     // has travelled its range. Kept out of Box2D — it has no collision yet.
     struct Projectile {
@@ -166,5 +180,21 @@ namespace naval {
         float damage = 0.0f;           // hit points removed from the hull it strikes
         moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike
+    };
+
+    // How long a splash lingers before it has fully faded. Shared by the splash
+    // system (which removes splashes past this age) and the renderer (which
+    // expands and fades each over it), so the two never disagree.
+    inline constexpr float kSplashLifetimeS = 0.6f;
+
+    // A brief splash where a spent shot fell into the sea — spawned when a
+    // projectile travels its full range without striking a hull. It expands and
+    // fades over kSplashLifetimeS, then is removed. Its own entity, not attached
+    // to anything, since the projectile that spawned it is already gone. Purely
+    // cosmetic: the splash system ages it, the renderer draws it.
+    struct Splash {
+        b2Vec2 position{ 0.0f, 0.0f }; // world point (m) where the shot fell
+        float age = 0.0f;              // seconds since it appeared
+        float radiusM = 0.0f;          // the shot's radius; the splash grows from it
     };
 }

@@ -147,10 +147,15 @@ namespace naval {
         UpdatePropulsion(m_registry, dt);
         UpdateWeapons(m_registry, dt);
         UpdateProjectiles(m_registry, dt);
+        UpdateSplashes(m_registry, dt);
         m_world.Step(dt, 8, 3);
 
         // After the step so marks are dropped at the hull's settled position.
         UpdateWake(m_registry, dt);
+
+        // Age wrecks and remove them once they have fully sunk. After the step
+        // so a wreck's Box2D body is destroyed outside the world update.
+        UpdateSinking(m_registry, dt);
     }
 
     void GameLayer::Draw() {
@@ -158,6 +163,9 @@ namespace naval {
 
         // Wakes on the water, beneath everything else the ships lay down.
         DrawWakes(m_graphics, m_registry, m_camera);
+
+        // Splashes from spent shots, on the water alongside the wakes.
+        DrawSplashes(m_graphics, m_registry, m_camera);
 
         // Firing arcs beneath the hulls, for every armed ship still alive.
         for (auto ship : m_registry.view<Physics, Armament>()) {

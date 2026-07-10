@@ -12,6 +12,14 @@ namespace naval {
     void UpdateWeapons(entt::registry& registry, float dt);
 
     // Advances projectiles in a straight line and destroys those that have
-    // travelled their full range.
+    // travelled their full range. A shot that expires without striking a hull
+    // leaves a splash entity where it fell.
     void UpdateProjectiles(entt::registry& registry, float dt);
+
+    // Ages the splashes left by spent shots and removes those fully faded.
+    void UpdateSplashes(entt::registry& registry, float dt);
+
+    // Ages each destroyed hull's death sequence and removes the wreck once it
+    // has fully sunk. Hulls enter this state when their health reaches zero.
+    void UpdateSinking(entt::registry& registry, float dt);
 }

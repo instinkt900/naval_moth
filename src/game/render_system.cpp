@@ -26,6 +26,15 @@ namespace naval {
         constexpr float kWakeAlpha = 0.22f;         // opacity of a fresh mark — low so it stays subtle
         constexpr float kWakeStartBeamFrac = 0.25f; // fresh mark radius, fraction of the half-beam
         constexpr float kWakeEndBeamFrac = 3.0f;    // faded mark radius (the wake widens as it dissipates)
+
+        // --- splash ---
+        const moth_ui::Color kSplashColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per splash
+        constexpr float kSplashAlpha = 0.5f;        // opacity of a fresh splash
+        constexpr float kSplashStartRadiusFrac = 1.5f; // fresh radius, factor of the shot radius
+        constexpr float kSplashEndRadiusFrac = 5.0f;   // faded radius (the ring spreads as it dies)
+
+        // --- wreck ---
+        const moth_ui::Color kWreckColor{ 0.16f, 0.16f, 0.18f, 1.0f }; // charred hull; alpha set per sink stage
     }
 
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
@@ -89,6 +98,29 @@ namespace naval {
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
+    void DrawSplashes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera) {
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        // Alpha blend for the fading splashes, then hand it back so the rest of
+        // the frame is unaffected — matching how the wakes are drawn.
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+        for (auto entity : registry.view<Splash>()) {
+            auto const& splash = registry.get<Splash>(entity);
+            // Each splash expands from the shot's size and fades as it ages,
+            // easing into zero with a smoothstep so it dissolves rather than
+            // winking out — the same soft landing the wake marks use.
+            float const t = std::clamp(splash.age / kSplashLifetimeS, 0.0f, 1.0f);
+            float const life = 1.0f - t;
+            float const fade = life * life * (3.0f - (2.0f * life)); // smoothstep, soft landing at 0
+            graphics.SetColor(moth_ui::Color{ kSplashColor.r, kSplashColor.g, kSplashColor.b,
+                                              kSplashAlpha * fade });
+            float const startR = splash.radiusM * kSplashStartRadiusFrac;
+            float const endR = splash.radiusM * kSplashEndRadiusFrac;
+            float const radiusM = startR + ((endR - startR) * t);
+            graphics.DrawFillCircleF(camera.WorldToScreen(splash.position), camera.MToPx(radiusM));
+        }
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
+    }
+
     void DrawShip(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
         b2Body* body = registry.get<Physics>(ship).body;
         auto const& renderable = registry.get<Renderable>(ship);
@@ -108,6 +140,20 @@ namespace naval {
         auto const outline = HullOutline<moth_ui::FloatVec2>(halfLengthPx, halfBeamPx,
                                                              renderable.foreShoulder, renderable.foreShoulderBeam,
                                                              renderable.aftShoulder, renderable.aftShoulderBeam);
+
+        // A destroyed hull draws as a uniform charred wreck — no heading bow —
+        // solid grey through the burn phase, then alpha-fading to nothing as it
+        // slips under over the sink phase (see kSinkBurnS / kSinkDurationS).
+        if (auto const* sinking = registry.try_get<Sinking>(ship); sinking != nullptr) {
+            float const sinkT = std::clamp((sinking->age - kSinkBurnS) / kSinkDurationS, 0.0f, 1.0f);
+            graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+            graphics.SetColor(moth_ui::Color{ kWreckColor.r, kWreckColor.g, kWreckColor.b, 1.0f - sinkT });
+            graphics.DrawFillPolygonF(outline.data(), outline.size());
+            graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
+            graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+            return;
+        }
+
         graphics.SetColor(renderable.color);
         graphics.DrawFillPolygonF(outline.data(), outline.size());
 
@@ -156,11 +202,17 @@ namespace naval {
 
             graphics.SetColor(weapon.hasTarget ? kArcActiveColor : kArcColor);
 
-            constexpr int kSegments = 16;
-            float const step = (2.0f * weapon.arcHalfAngle) / kSegments;
+            // Subdivide the outer sweep by its pixel length so wide or far-
+            // reaching arcs stay smooth — a fixed count left a full-circle arc
+            // looking angular. ~4px per segment matches the density
+            // DrawFillCircleF uses; clamped so a sliver still curves and a huge
+            // arc doesn't blow up the line count.
+            float const arcAngle = 2.0f * weapon.arcHalfAngle;
+            int const segments = std::clamp(static_cast<int>(std::ceil((rangePx * arcAngle) / 4.0f)), 8, 64);
+            float const step = arcAngle / static_cast<float>(segments);
             moth_ui::FloatVec2 prev = edge(start);
             graphics.DrawLineF(originPx, prev); // near radial edge
-            for (int i = 1; i <= kSegments; ++i) {
+            for (int i = 1; i <= segments; ++i) {
                 moth_ui::FloatVec2 const point = edge(start + (step * static_cast<float>(i)));
                 graphics.DrawLineF(prev, point);
                 prev = point;

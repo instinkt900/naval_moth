@@ -62,6 +62,12 @@ namespace naval {
                 body->ApplyForceToCenter((-dragCoef * velocity.Length()) * velocity, true);
             }
 
+            // A sinking wreck answers no helm: the lateral grip and drag above
+            // still coast it to a stop, but it takes no thrust or steering.
+            if (registry.all_of<Sinking>(entity)) {
+                continue;
+            }
+
             // The rudder always eases toward its commanded angle at the hull's
             // slew rate — however the command was set — so ordering it hard over
             // swings the blade across rather than snapping it.
@@ -85,8 +91,12 @@ namespace naval {
             float const dist = toTarget.Length();
             if (dist < kArrivalRadiusM) {
                 // Arrived: stop steering and powering, let momentum carry it on.
+                // Zero the helm too, so the panel and the manual mode it hands off
+                // to both read all-stop rather than the last order.
                 target.active = false;
                 body->SetAngularVelocity(0.0f);
+                helm.throttle = 0.0f;
+                helm.rudderCmd = 0.0f;
                 continue;
             }
 
@@ -106,7 +116,8 @@ namespace naval {
             while (headingError < -b2_pi) {
                 headingError += 2.0f * b2_pi;
             }
-            body->SetAngularVelocity(std::clamp(headingError * kTurnGain, -effectiveTurnRate, effectiveTurnRate));
+            float const yaw = std::clamp(headingError * kTurnGain, -effectiveTurnRate, effectiveTurnRate);
+            body->SetAngularVelocity(yaw);
 
             // Throttle scales with distance: far = full power, near = gentle.
             b2Vec2 direction = toTarget;
@@ -124,6 +135,14 @@ namespace naval {
             float const alignment = std::clamp(b2Dot(forward, direction), 0.0f, 1.0f);
             float const thrustGate = alignment + ((1.0f - alignment) * (1.0f - steerage));
             body->ApplyForceToCenter((propulsion.maxThrust * throttle * thrustGate) * forward, true);
+
+            // Mirror the autopilot's orders back onto the helm so the panel shows
+            // what it is doing: the applied thrust fraction, and the yaw command
+            // as a normalised rudder. The rudder slew at the top of the loop then
+            // walks the actual blade toward it, and taking the helm inherits these
+            // settings so control passes over without a jolt.
+            helm.throttle = throttle * thrustGate;
+            helm.rudderCmd = effectiveTurnRate > 0.0f ? yaw / effectiveTurnRate : 0.0f;
         }
     }
 }

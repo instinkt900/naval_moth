@@ -158,6 +158,23 @@ namespace naval {
             }
             return best;
         }
+
+        // Transition a destroyed hull into its sinking death sequence: retire it
+        // from combat so nothing targets it or fires from it, cut its helm so the
+        // wreck coasts to a stop under drag, and tag it Sinking for the sinking
+        // system and renderer to carry through.
+        void BeginSinking(entt::registry& registry, entt::entity hull) {
+            registry.remove<Armament>(hull);
+            registry.remove<Combatant>(hull);
+            if (auto* helm = registry.try_get<Helm>(hull); helm != nullptr) {
+                helm->throttle = 0.0f;
+                helm->rudderCmd = 0.0f;
+            }
+            if (auto* target = registry.try_get<MoveTarget>(hull); target != nullptr) {
+                target->active = false;
+            }
+            registry.emplace<Sinking>(hull);
+        }
     }
 
     void UpdateWeapons(entt::registry& registry, float dt) {
@@ -256,6 +273,7 @@ namespace naval {
     void UpdateProjectiles(entt::registry& registry, float dt) {
         std::vector<entt::entity> expired;   // projectiles to remove
         std::vector<entt::entity> destroyed; // hulls whose health reached zero
+        std::vector<Splash> splashes;        // splashes for shots that fell short of any hull
         // A projectile collides only with hulls of the faction it was fired at,
         // which keeps a shot from striking its own side (the ship that fired it
         // included). A hit removes the projectile and subtracts its damage from
@@ -270,6 +288,9 @@ namespace naval {
             projectile.remaining -= dt * projectile.velocity.Length();
             if (projectile.remaining <= 0.0f) {
                 expired.push_back(entity);
+                // Ran its full range without hitting anything — mark the spot
+                // with a splash where the shot fell into the sea.
+                splashes.push_back(Splash{ projectile.position, 0.0f, projectile.radiusM });
                 continue;
             }
             for (auto hull : hulls) {
@@ -299,8 +320,39 @@ namespace naval {
             registry.destroy(entity);
         }
         for (auto entity : destroyed) {
+            BeginSinking(registry, entity);
+        }
+        for (auto const& splash : splashes) {
+            registry.emplace<Splash>(registry.create(), splash);
+        }
+    }
+
+    void UpdateSinking(entt::registry& registry, float dt) {
+        std::vector<entt::entity> gone; // wrecks fully under, to remove
+        for (auto entity : registry.view<Sinking>()) {
+            auto& sinking = registry.get<Sinking>(entity);
+            sinking.age += dt;
+            if (sinking.age >= kSinkBurnS + kSinkDurationS) {
+                gone.push_back(entity);
+            }
+        }
+        for (auto entity : gone) {
             b2Body* body = registry.get<Physics>(entity).body;
             body->GetWorld()->DestroyBody(body);
+            registry.destroy(entity);
+        }
+    }
+
+    void UpdateSplashes(entt::registry& registry, float dt) {
+        std::vector<entt::entity> expired;
+        for (auto entity : registry.view<Splash>()) {
+            auto& splash = registry.get<Splash>(entity);
+            splash.age += dt;
+            if (splash.age >= kSplashLifetimeS) {
+                expired.push_back(entity);
+            }
+        }
+        for (auto entity : expired) {
             registry.destroy(entity);
         }
     }
