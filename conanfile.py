@@ -8,7 +8,7 @@ class NavalMoth(ConanFile):
     generators = "CMakeToolchain", "CMakeDeps", "MSBuildToolchain", "MSBuildDeps"
 
     def requirements(self):
-        self.requires("moth_graphics/[>=1.1.0]")
+        self.requires("moth_graphics/[>=1.2.0]")
         self.requires("box2d/2.4.1")
         self.requires("entt/3.13.2")
 
