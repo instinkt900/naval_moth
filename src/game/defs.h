@@ -74,6 +74,12 @@ namespace naval::defs {
         std::string hull; // id into the hull table
     };
 
+    // The player's ship: a hull plus (later) a chosen loadout. A single
+    // definition rather than a table — there is only ever one player.
+    struct Player {
+        std::string hull; // id into the hull table
+    };
+
     // Loaded content, keyed by id. Accessors throw if an id is missing; all
     // cross-references are checked at load, so lookups made by the spawn factory
     // are safe.
@@ -88,11 +94,13 @@ namespace naval::defs {
         Weapon const& GetWeapon(std::string const& id) const;
         Projectile const& GetProjectile(std::string const& id) const;
         Enemy const& GetEnemy(std::string const& id) const;
+        Player const& GetPlayer() const;
 
     private:
         std::unordered_map<std::string, Hull> m_hulls;
         std::unordered_map<std::string, Weapon> m_weapons;
         std::unordered_map<std::string, Projectile> m_projectiles;
         std::unordered_map<std::string, Enemy> m_enemies;
+        Player m_player;
     };
 }

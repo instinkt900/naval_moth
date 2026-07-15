@@ -31,7 +31,7 @@ namespace naval {
 
         // Player at the view centre; enemies scattered across the surrounding
         // water for the player to hunt down.
-        m_ship = SpawnHull(m_registry, m_world, m_db, "frigate", m_camera.center, Faction::Player);
+        m_ship = SpawnHull(m_registry, m_world, m_db, m_db.GetPlayer().hull, m_camera.center, Faction::Player);
         SpawnEnemies();
     }
 

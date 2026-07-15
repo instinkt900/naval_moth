@@ -125,6 +125,10 @@ namespace naval::defs {
             db.m_enemies.emplace(id, e);
         }
 
+        // The player is a single definition, not a table.
+        nlohmann::json const playerJson = ReadJson(dir / "player.json");
+        db.m_player.hull = playerJson.at("hull").get<std::string>();
+
         // Validate every cross-reference so spawning can trust its lookups.
         for (auto const& [id, weapon] : db.m_weapons) {
             Require(db.m_projectiles.count(weapon.projectile) != 0,
@@ -140,6 +144,8 @@ namespace naval::defs {
             Require(db.m_hulls.count(enemy.hull) != 0,
                     "enemy '" + id + "' references unknown hull '" + enemy.hull + "'");
         }
+        Require(db.m_hulls.count(db.m_player.hull) != 0,
+                "player references unknown hull '" + db.m_player.hull + "'");
 
         return db;
     }
@@ -166,5 +172,9 @@ namespace naval::defs {
         auto it = m_enemies.find(id);
         Require(it != m_enemies.end(), "no enemy '" + id + "'");
         return it->second;
+    }
+
+    Player const& Database::GetPlayer() const {
+        return m_player;
     }
 }

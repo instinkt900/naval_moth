@@ -122,7 +122,7 @@ factory rather than from hard-coded constants. This keeps the composable-ships
 pillar honest — a loadout is just a different set of references — and lets content
 and balance change without a recompile.
 
-Four definition sets, cross-referenced by id:
+Five definition sets, cross-referenced by id:
 
 - **Hulls** — structural identity: propulsion handling, hull dimensions and render
   spec, base health, and the weapon mount points a hull carries.
@@ -134,6 +134,8 @@ Four definition sets, cross-referenced by id:
   self-guided munitions gain their own run distance when they arrive.
 - **Enemies** — a hull plus a weapon loadout and an AI behaviour profile; what the
   game spawns as an opponent.
+- **Player** — the player's own ship: a hull (and later a chosen loadout). A single
+  definition rather than a table, since there is only ever one player.
 
 References resolve by id — an enemy names a hull and weapons, a weapon names a
 projectile — and are validated when the definitions load, so a bad reference fails
