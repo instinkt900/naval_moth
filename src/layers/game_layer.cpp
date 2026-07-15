@@ -194,6 +194,12 @@ namespace naval {
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
         DrawProjectiles(m_graphics, m_registry, m_camera);
 
+        // Debug spread previews on top: a line to each enabled weapon's target
+        // and the disc its shots may land within.
+        for (auto ship : m_registry.view<Physics, Armament>()) {
+            DrawWeaponSpread(m_graphics, m_registry, m_camera, ship);
+        }
+
         DrawHelmPanel();
         DrawAggroDebug();
     }
@@ -324,6 +330,8 @@ namespace naval {
             ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
 
             ImGui::Checkbox("Show arc", &weapon.showArc);
+            ImGui::SameLine();
+            ImGui::Checkbox("Show spread", &weapon.showSpread);
             ImGui::SameLine();
             ImGui::Checkbox("Auto fire", &weapon.autoFire);
 

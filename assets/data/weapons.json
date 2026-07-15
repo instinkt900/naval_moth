@@ -3,24 +3,28 @@
         "projectile": "basic_shell",
         "cooldown": 0.1,
         "range": 130.0,
-        "arcDegrees": 36.0
+        "arcDegrees": 36.0,
+        "spreadDegrees": 3.0
     },
     "broadside_gun": {
         "projectile": "large_shell",
         "cooldown": 2.0,
         "range": 300.0,
-        "arcDegrees": 65.0
+        "arcDegrees": 65.0,
+        "spreadDegrees": 3.0
     },
     "broadside_cannon": {
         "projectile": "cannonball",
         "cooldown": 2.0,
         "range": 15.0,
-        "arcDegrees": 35.0
+        "arcDegrees": 35.0,
+        "spreadDegrees": 5.0
     },
     "big_gun": {
         "projectile": "giant_shell",
         "cooldown": 8.0,
         "range": 1400.0,
-        "arcDegrees": 15.0
+        "arcDegrees": 15.0,
+        "spreadDegrees": 2.0
     }
 }

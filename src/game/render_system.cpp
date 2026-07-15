@@ -23,6 +23,7 @@ namespace naval {
         const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f }; // arc with a target in it
         const moth_ui::Color kAggroRingColor{ 0.80f, 0.30f, 0.30f, 0.20f };       // aggro range, ship still patrolling
         const moth_ui::Color kAggroRingActiveColor{ 0.95f, 0.35f, 0.30f, 0.65f }; // aggro range once the ship has locked on
+        const moth_ui::Color kSpreadColor{ 0.95f, 0.85f, 0.35f, 0.6f };           // debug spread preview (aim line + disc)
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -222,6 +223,54 @@ namespace naval {
             }
             graphics.DrawLineF(originPx, prev); // far radial edge
         }
+    }
+
+    void DrawWeaponSpread(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
+        auto const* armament = registry.try_get<Armament>(ship);
+        if (armament == nullptr) {
+            return;
+        }
+        b2Body* body = registry.get<Physics>(ship).body;
+        b2Vec2 const shipPos = body->GetPosition();
+        float const shipAngle = body->GetAngle();
+        float const cosA = std::cos(shipAngle);
+        float const sinA = std::sin(shipAngle);
+
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+        graphics.SetColor(kSpreadColor);
+
+        for (auto const& weapon : armament->weapons) {
+            if (!weapon.showSpread || weapon.target == entt::null || !registry.valid(weapon.target)) {
+                continue;
+            }
+            // Aim line from the mount's world position out to the aim point.
+            b2Vec2 const off = weapon.mountOffset;
+            b2Vec2 const mountWorld{ shipPos.x + (cosA * off.x) - (sinA * off.y),
+                                     shipPos.y + (sinA * off.x) + (cosA * off.y) };
+            moth_ui::FloatVec2 const originPx = camera.WorldToScreen(mountWorld);
+            moth_ui::FloatVec2 const aimPx = camera.WorldToScreen(weapon.aimWorld);
+            graphics.DrawLineF(originPx, aimPx);
+
+            // The spread disc over the aim point: a shot may land anywhere within
+            // it, so its size shows the weapon's accuracy at this range. Full
+            // circle as a polyline, subdivided by pixel circumference like the arcs.
+            float const radiusPx = camera.MToPx(weapon.spreadRadiusM);
+            int const segments = std::clamp(static_cast<int>(std::ceil((2.0f * b2_pi * radiusPx) / 4.0f)), 16, 128);
+            float const step = (2.0f * b2_pi) / static_cast<float>(segments);
+            auto point = [&](int i) {
+                float const a = step * static_cast<float>(i);
+                return moth_ui::FloatVec2{ aimPx.x + (radiusPx * std::cos(a)),
+                                           aimPx.y + (radiusPx * std::sin(a)) };
+            };
+            moth_ui::FloatVec2 prev = point(0);
+            for (int i = 1; i <= segments; ++i) {
+                moth_ui::FloatVec2 const cur = point(i);
+                graphics.DrawLineF(prev, cur);
+                prev = cur;
+            }
+        }
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
     void DrawAggroRing(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {

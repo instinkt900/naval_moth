@@ -33,6 +33,7 @@ namespace naval::defs {
         float cooldown = 0.0f;    // seconds between shots
         float range = 0.0f;       // metres
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees)
+        float spread = 0.0f;      // radians (loaded from spreadDegrees); half-angle of the spread disc over the target
     };
 
     // A weapon fixed to a hull at a bearing relative to the bow (radians;

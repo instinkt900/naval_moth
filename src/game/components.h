@@ -121,6 +121,7 @@ namespace naval {
         b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
         float arcHalfAngle = 0.0f;          // rad, half-width of the firing arc
         float range = 0.0f;                 // m, engagement range; also how far its shots travel
+        float spread = 0.0f;                // rad, half-angle of the spread disc over the target (radius = range * tan)
         float cooldown = 0.0f;              // s between shots
 
         // Projectile spec, copied from the database so firing needs no lookup.
@@ -134,6 +135,7 @@ namespace naval {
 
         // Player-facing controls, one set per weapon.
         bool showArc = true;        // draw this weapon's firing arc
+        bool showSpread = false;    // draw a debug preview of the spread disc over the current target
         bool autoFire = true;       // acquire and fire automatically
         bool fireRequested = false; // a manual fire order, consumed next update
 
@@ -147,6 +149,13 @@ namespace naval {
         // Stored as signed fractions [-1, 1] of the target's half-extents
         // (x fore-aft, y port-starboard) and resolved against the live target.
         b2Vec2 aimOffset{ 0.0f, 0.0f };
+
+        // The current world aim point (the held hull spot, led for target motion)
+        // and the radius of the spread disc around it — refreshed each tick a
+        // target is held. Firing samples a random point in this disc; the debug
+        // draw previews it. Meaningful only while `target` is valid.
+        b2Vec2 aimWorld{ 0.0f, 0.0f };
+        float spreadRadiusM = 0.0f;
     };
 
     // Every weapon a ship carries. Weapons acquire targets and fire
@@ -196,12 +205,15 @@ namespace naval {
         float age = 0.0f; // seconds since it was destroyed
     };
 
-    // A projectile in flight. Straight-shot: constant velocity, expires once it
-    // has travelled its range. Kept out of Box2D — it has no collision yet.
+    // A projectile in flight. Straight-shot: constant velocity, detonates once it
+    // has travelled to its fuzed range — set when fired to the target's distance
+    // (plus a little random spread) so a miss splashes near the target rather
+    // than flying on to the weapon's max range. Kept out of Box2D — it has no
+    // collision yet.
     struct Projectile {
         b2Vec2 position{ 0.0f, 0.0f }; // world space (metres)
         b2Vec2 velocity{ 0.0f, 0.0f }; // m/s
-        float remaining = 0.0f;        // m of travel left before it expires
+        float remaining = 0.0f;        // m of travel left before the fuze detonates it
         float radiusM = 0.0f;          // draw radius, metres
         float damage = 0.0f;           // hit points removed from the hull it strikes
         moth_ui::Color color;          // draw colour

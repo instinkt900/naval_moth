@@ -52,6 +52,7 @@ namespace naval {
             weapon.mountOffset = b2Vec2{ mount.forwardM, mount.lateralM };
             weapon.arcHalfAngle = weaponDef.arcHalfAngle;
             weapon.range = weaponDef.range;
+            weapon.spread = weaponDef.spread;
             weapon.cooldown = weaponDef.cooldown;
             weapon.projectileSpeed = projectileDef.speed;
             weapon.projectileRadiusM = projectileDef.radiusM;

@@ -31,6 +31,17 @@ namespace naval {
             return dist(rng);
         }
 
+        // A uniformly random point within a disc of the given radius centred on
+        // the origin. The sqrt on the radius keeps the distribution even across
+        // the area rather than clustering toward the centre.
+        b2Vec2 RandomInDisc(float radius) {
+            static std::mt19937 rng{ std::random_device{}() };
+            static std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+            float const angle = unit(rng) * 2.0f * b2_pi;
+            float const r = radius * std::sqrt(unit(rng));
+            return b2Vec2{ r * std::cos(angle), r * std::sin(angle) };
+        }
+
         // True if segments a-b and c-d cross. Parallel/collinear counts as no
         // crossing; the other overlap tests cover those degenerate cases.
         bool SegmentsCross(b2Vec2 a, b2Vec2 b, b2Vec2 c, b2Vec2 d) {
@@ -132,6 +143,25 @@ namespace naval {
             return f == Faction::Player ? Faction::Enemy : Faction::Player;
         }
 
+        // The first hull of the projectile's target faction that its circle
+        // overlaps this tick, or entt::null if it strikes nothing — a shot only
+        // collides with the side it was fired at, never its own.
+        entt::entity StruckHull(entt::registry& registry, Projectile const& projectile) {
+            for (auto hull : registry.view<Physics, Renderable, Combatant>()) {
+                if (registry.get<Combatant>(hull).faction != projectile.target) {
+                    continue;
+                }
+                b2Body* body = registry.get<Physics>(hull).body;
+                auto const& renderable = registry.get<Renderable>(hull);
+                if (HullOverlapsCircle(body->GetPosition(), body->GetAngle(),
+                                       renderable.halfLengthM, renderable.halfBeamM,
+                                       projectile.position, projectile.radiusM)) {
+                    return hull;
+                }
+            }
+            return entt::null;
+        }
+
         // The nearest hull of `enemyFaction` whose shape overlaps a weapon's arc
         // and range, measured from `origin`, or entt::null if none qualifies.
         entt::entity AcquireTarget(entt::registry& registry, Faction enemyFaction,
@@ -220,17 +250,12 @@ namespace naval {
                     weapon.aimOffset = b2Vec2{ RandomUnitSpan(), RandomUnitSpan() };
                 }
 
-                // Fire when off cooldown and either the weapon engages
-                // automatically or the player has clicked Fire. A manual order is
-                // one-shot: consumed whether or not it yields a shot this tick.
-                bool const wantFire = weapon.autoFire || weapon.fireRequested;
-                weapon.fireRequested = false;
-                if (!wantFire || weapon.cooldownRemaining > 0.0f) {
-                    continue;
-                }
-
-                // Resolve the aim offset against the target's live transform so
-                // the shot tracks a fixed spot on the enemy hull as it moves.
+                // Resolve the held aim offset against the target's live transform
+                // so the aim point tracks a fixed spot on the enemy hull as it
+                // moves, then lead it: aim where the target will be when the shot
+                // lands (first-order intercept — time to the aim point at the
+                // projectile's speed, advanced by the target's velocity), so a
+                // hull can't just outrun a shot fired at its present position.
                 b2Body* targetBody = registry.get<Physics>(target).body;
                 auto const& targetRenderable = registry.get<Renderable>(target);
                 b2Vec2 const targetPos = targetBody->GetPosition();
@@ -241,20 +266,51 @@ namespace naval {
                                        weapon.aimOffset.y * targetRenderable.halfBeamM };
                 b2Vec2 const aimPoint{ targetPos.x + (targetCos * localAim.x) - (targetSin * localAim.y),
                                        targetPos.y + (targetSin * localAim.x) + (targetCos * localAim.y) };
+                b2Vec2 const targetVel = targetBody->GetLinearVelocity();
+                float const flightTime = weapon.projectileSpeed > 0.0f
+                                             ? (aimPoint - mountPos).Length() / weapon.projectileSpeed
+                                             : 0.0f;
 
-                // Fire from the mount position toward the aim point, but never
-                // past the weapon's arc: clamp the shot's bearing to the arc so a
-                // target straddling the edge is still only shot at within it.
-                b2Vec2 const toAim = aimPoint - mountPos;
-                float const aimDelta = NormalizeAngle(std::atan2(toAim.y, toAim.x) - arcCentre);
+                // The aim point and its spread disc, refreshed every tick a target
+                // is held so the debug draw can preview them even between shots.
+                // The spread angle is the opposite corner of a right triangle whose
+                // adjacent side is the distance to the aim point, so the disc's
+                // radius (= dist * tan(spread)) grows with range.
+                weapon.aimWorld = aimPoint + (flightTime * targetVel);
+                weapon.spreadRadiusM = (weapon.aimWorld - mountPos).Length() * std::tan(weapon.spread);
+
+                // Fire when off cooldown and either the weapon engages
+                // automatically or the player has clicked Fire. A manual order is
+                // one-shot: consumed whether or not it yields a shot this tick.
+                bool const wantFire = weapon.autoFire || weapon.fireRequested;
+                weapon.fireRequested = false;
+                if (!wantFire || weapon.cooldownRemaining > 0.0f) {
+                    continue;
+                }
+
+                // Scatter: send the shot to a uniformly random point within the
+                // spread disc over the aim point, so each shot varies in both
+                // bearing and depth together and the scatter widens with range.
+                b2Vec2 const firePoint = weapon.aimWorld + RandomInDisc(weapon.spreadRadiusM);
+
+                // Fire from the mount toward the scattered point, but never past
+                // the weapon's arc: clamp the shot's bearing to the arc so a target
+                // straddling the edge is still only shot at within it.
+                b2Vec2 const toFire = firePoint - mountPos;
+                float const aimDelta = NormalizeAngle(std::atan2(toFire.y, toFire.x) - arcCentre);
                 float const shotBearing =
                     arcCentre + std::clamp(aimDelta, -weapon.arcHalfAngle, weapon.arcHalfAngle);
                 b2Vec2 const aim{ std::cos(shotBearing), std::sin(shotBearing) };
 
+                // Fuze the shot to the scattered point's range so it detonates
+                // there — near the target — rather than flying on to max range.
+                // Capped at the weapon's reach.
+                float const fuzeRange = std::clamp(toFire.Length(), 0.0f, weapon.range);
+
                 Projectile shot;
                 shot.position = mountPos;
                 shot.velocity = weapon.projectileSpeed * aim;
-                shot.remaining = weapon.range;
+                shot.remaining = fuzeRange;
                 shot.radiusM = weapon.projectileRadiusM;
                 shot.damage = weapon.projectileDamage;
                 shot.color = weapon.projectileColor;
@@ -274,46 +330,40 @@ namespace naval {
         std::vector<entt::entity> expired;   // projectiles to remove
         std::vector<entt::entity> destroyed; // hulls whose health reached zero
         std::vector<Splash> splashes;        // splashes for shots that fell short of any hull
-        // A projectile collides only with hulls of the faction it was fired at,
-        // which keeps a shot from striking its own side (the ship that fired it
-        // included). A hit removes the projectile and subtracts its damage from
-        // the hull's health; a hull with no Health is simply not destructible.
-        // Removals are deferred until after iterating so we never touch pools
-        // (entt views or the Box2D world) while a view over them is live.
-        auto hulls = registry.view<Physics, Renderable, Combatant>();
+        // A hit removes the projectile and subtracts its damage from the hull's
+        // health; a hull with no Health is simply not destructible. Removals are
+        // deferred until after iterating so we never touch pools (entt views or
+        // the Box2D world) while a view over them is live.
         auto view = registry.view<Projectile>();
         for (auto entity : view) {
             auto& projectile = view.get<Projectile>(entity);
             projectile.position += dt * projectile.velocity;
             projectile.remaining -= dt * projectile.velocity.Length();
-            if (projectile.remaining <= 0.0f) {
+
+            // Strike test first: if the shot overlaps a hull this tick it hits,
+            // even if its fuze also came due — so a shot fuzed to the target's
+            // range damages the target rather than splashing on top of it.
+            entt::entity const hull = StruckHull(registry, projectile);
+            if (hull != entt::null) {
                 expired.push_back(entity);
-                // Ran its full range without hitting anything — mark the spot
-                // with a splash where the shot fell into the sea.
-                splashes.push_back(Splash{ projectile.position, 0.0f, projectile.radiusM });
+                // Apply damage only while the hull is still alive, so a hull is
+                // queued for destruction exactly once — on the hit that crosses
+                // zero — however many shots land the same tick.
+                if (auto* health = registry.try_get<Health>(hull); health != nullptr && health->current > 0.0f) {
+                    health->current -= projectile.damage;
+                    if (health->current <= 0.0f) {
+                        destroyed.push_back(hull);
+                    }
+                }
                 continue;
             }
-            for (auto hull : hulls) {
-                if (hulls.get<Combatant>(hull).faction != projectile.target) {
-                    continue;
-                }
-                b2Body* body = hulls.get<Physics>(hull).body;
-                auto const& renderable = hulls.get<Renderable>(hull);
-                if (HullOverlapsCircle(body->GetPosition(), body->GetAngle(),
-                                       renderable.halfLengthM, renderable.halfBeamM,
-                                       projectile.position, projectile.radiusM)) {
-                    expired.push_back(entity);
-                    // Apply damage only while the hull is still alive, so a hull
-                    // is queued for destruction exactly once — on the hit that
-                    // crosses zero — however many shots land the same tick.
-                    if (auto* health = registry.try_get<Health>(hull); health != nullptr && health->current > 0.0f) {
-                        health->current -= projectile.damage;
-                        if (health->current <= 0.0f) {
-                            destroyed.push_back(hull);
-                        }
-                    }
-                    break;
-                }
+
+            // Fuze: the shot has run to its set range without striking a hull, so
+            // it detonates — leave a splash where it went off, near the target it
+            // was aimed at.
+            if (projectile.remaining <= 0.0f) {
+                expired.push_back(entity);
+                splashes.push_back(Splash{ projectile.position, 0.0f, projectile.radiusM });
             }
         }
         for (auto entity : expired) {

@@ -72,6 +72,7 @@ namespace naval::defs {
             w.cooldown = j.at("cooldown").get<float>();
             w.range = j.at("range").get<float>();
             w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad;
+            w.spread = j.value("spreadDegrees", 0.0f) * moth_ui::kDegToRad;
             db.m_weapons.emplace(id, w);
         }
 

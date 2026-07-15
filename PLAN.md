@@ -106,11 +106,12 @@ effective range.
 ## Projectiles
 
 Distinct projectile types with their own behaviour — starting with a simple
-straight-shot cannonball (flat travel that splashes out at the end of the firing
-weapon's range). For a straight shot the flight distance is the weapon's range,
-so a projectile carries no range of its own yet. Missiles and torpedoes follow
-later, with homing/guidance behaviour — and a self-contained run distance
-independent of the launcher — of their own.
+straight-shot cannonball (flat travel, fuzed to detonate at the target's range so
+a miss splashes near the target rather than flying on to the weapon's maximum
+range). A projectile carries no range of its own yet — the firing weapon sets
+both its reach and, per shot, the fuze. Missiles and torpedoes follow later, with
+homing/guidance behaviour — and a self-contained run distance independent of the
+launcher — of their own.
 
 ## Data & content
 
