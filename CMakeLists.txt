@@ -13,6 +13,7 @@ endif()
 
 set(SOURCES ${SOURCES}
 	src/naval_application.cpp
+	src/game/aggro_system.cpp
 	src/game/combat_system.cpp
 	src/game/defs.cpp
 	src/game/propulsion_system.cpp

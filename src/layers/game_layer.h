@@ -46,6 +46,10 @@ namespace naval {
         // manual fire button, and the locked contact's picture.
         void DrawWeaponControls();
 
+        // ImGui window with live sliders over the shared aggro tuning, for
+        // dialling in enemy engagement behaviour without a rebuild.
+        void DrawAggroDebug();
+
         moth_graphics::graphics::IGraphics& m_graphics;
         Camera m_camera;
         // Held WASD state; the camera pans continuously while any is down.

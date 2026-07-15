@@ -1,5 +1,6 @@
 #include "layers/game_layer.h"
 
+#include "game/aggro_system.h"
 #include "game/combat_system.h"
 #include "game/components.h"
 #include "game/propulsion_system.h"
@@ -145,7 +146,10 @@ namespace naval {
         // Stream land in/out around the (possibly moved) camera view.
         m_terrain.Update(m_camera);
 
-        // Enemies pick their own waypoints before the autopilot steers everyone.
+        // Enemies that sense a foe within aggro range break off to manoeuvre and
+        // fight; the rest wander. Aggro runs first so it can claim the helm, and
+        // wander then handles only the ships still on patrol.
+        UpdateAggro(m_registry, dt);
         UpdateWander(m_registry, m_terrain, dt);
         UpdatePropulsion(m_registry, dt);
         UpdateWeapons(m_registry, dt);
@@ -170,6 +174,11 @@ namespace naval {
         // Splashes from spent shots, on the water alongside the wakes.
         DrawSplashes(m_graphics, m_registry, m_camera);
 
+        // Aggro-range rings around the AI ships (debug aid), beneath the arcs.
+        for (auto ship : m_registry.view<Physics, Aggro>()) {
+            DrawAggroRing(m_graphics, m_registry, m_camera, ship);
+        }
+
         // Firing arcs beneath the hulls, for every armed ship still alive.
         for (auto ship : m_registry.view<Physics, Armament>()) {
             DrawArcs(m_graphics, m_registry, m_camera, ship);
@@ -186,6 +195,24 @@ namespace naval {
         DrawProjectiles(m_graphics, m_registry, m_camera);
 
         DrawHelmPanel();
+        DrawAggroDebug();
+    }
+
+    void GameLayer::DrawAggroDebug() {
+        AggroTuning& tuning = AggroTuningRef();
+        ImGui::Begin("Aggro (debug)");
+        ImGui::SliderFloat("Aggro range (m)", &tuning.aggroRangeM, 100.0f, 4000.0f, "%.0f");
+        ImGui::SliderFloat("Disengage range (m)", &tuning.disengageRangeM, 100.0f, 5000.0f, "%.0f");
+        ImGui::SliderFloat("Standoff (frac)", &tuning.standoffFrac, 0.1f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Approach band (m)", &tuning.approachBandM, 50.0f, 2000.0f, "%.0f");
+        ImGui::SliderFloat("Helm gain", &tuning.helmGain, 0.1f, 8.0f, "%.2f");
+        ImGui::SliderFloat("Throttle gain", &tuning.throttleGain, 0.0005f, 0.02f, "%.4f");
+        ImGui::SliderFloat("Backoff weight", &tuning.backoffWeight, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Steerage throttle", &tuning.steerageThrottle, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Steerage error (rad)", &tuning.steerageErrorRad, 0.05f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Arc switch margin (rad)", &tuning.switchMarginRad, 0.0f, 1.5f, "%.2f");
+        ImGui::Checkbox("Show aggro rings", &tuning.showRings);
+        ImGui::End();
     }
 
     void GameLayer::DrawHelmPanel() {

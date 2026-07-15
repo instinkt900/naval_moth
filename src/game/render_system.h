@@ -17,6 +17,12 @@ namespace naval {
     // A ship's weapon firing arcs, brightening when a target sits inside one.
     void DrawArcs(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
+    // The aggro-range ring around an AI ship: how close a foe must come to wake
+    // it. Brightens once the ship has actually aggroed, so the trigger crossing
+    // is visible. A debug aid, gated by the shared aggro tuning (radius and
+    // visibility both come from it).
+    void DrawAggroRing(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
+
     // The dashed course line and marker for a ship's active move target.
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 

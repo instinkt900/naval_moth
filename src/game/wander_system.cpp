@@ -43,6 +43,14 @@ namespace naval {
                 continue;
             }
 
+            // A ship that has aggroed onto a foe is under the aggro system's helm
+            // (which keeps MoveTarget inactive); leave its patrol alone, or the
+            // wander below would hand it a fresh waypoint every tick.
+            if (auto const* aggro = registry.try_get<Aggro>(entity);
+                aggro != nullptr && aggro->target != entt::null) {
+                continue;
+            }
+
             auto& target = registry.get<MoveTarget>(entity);
             auto& wander = registry.get<Wander>(entity);
             b2Vec2 const from = registry.get<Physics>(entity).body->GetPosition();

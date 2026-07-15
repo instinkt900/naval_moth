@@ -67,6 +67,17 @@ namespace naval {
         float sinceCheck = 0.0f;      // s accumulated toward the next progress check
     };
 
+    // Aggro state for an enemy AI. While `target` is null the ship patrols under
+    // the Wander/autopilot; once a foe comes inside aggro range it locks on here,
+    // breaks off, and the aggro system takes the helm to manoeuvre a weapon onto
+    // it. `weaponIndex` is the armament slot of the arc it is working to present,
+    // remembered between ticks so the ship commits to one battery rather than
+    // flipping between port and starboard as the target drifts across the bow.
+    struct Aggro {
+        entt::entity target = entt::null; // the contact being engaged, or null while patrolling
+        int weaponIndex = -1;             // armament index of the arc being presented, or -1
+    };
+
     // How to draw the hull. The long axis runs bow-to-stern along local +x
     // (the body's forward direction).
     struct Renderable {

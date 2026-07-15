@@ -1,5 +1,6 @@
 #include "game/render_system.h"
 
+#include "game/aggro_system.h"
 #include "game/camera.h"
 #include "game/components.h"
 #include "game/hull_shape.h"
@@ -20,6 +21,8 @@ namespace naval {
         const moth_ui::Color kLineColor{ 0.55f, 0.65f, 0.75f, 1.0f };
         const moth_ui::Color kArcColor{ 0.35f, 0.45f, 0.55f, 0.6f };       // firing arc at rest
         const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f }; // arc with a target in it
+        const moth_ui::Color kAggroRingColor{ 0.80f, 0.30f, 0.30f, 0.20f };       // aggro range, ship still patrolling
+        const moth_ui::Color kAggroRingActiveColor{ 0.95f, 0.35f, 0.30f, 0.65f }; // aggro range once the ship has locked on
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -219,6 +222,43 @@ namespace naval {
             }
             graphics.DrawLineF(originPx, prev); // far radial edge
         }
+    }
+
+    void DrawAggroRing(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
+        auto const* aggro = registry.try_get<Aggro>(ship);
+        if (aggro == nullptr) {
+            return;
+        }
+        AggroTuning const& tuning = AggroTuningRef();
+        if (!tuning.showRings) {
+            return;
+        }
+
+        moth_ui::FloatVec2 const centrePx = camera.WorldToScreen(registry.get<Physics>(ship).body->GetPosition());
+        float const radiusPx = camera.MToPx(tuning.aggroRangeM);
+
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        // Faint while patrolling, bright once locked on, so the ring reads as the
+        // exact threshold the player has to cross. Alpha-blended like the wakes.
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+        graphics.SetColor(aggro->target != entt::null ? kAggroRingActiveColor : kAggroRingColor);
+
+        // Full circle as a polyline, subdivided by pixel circumference so it stays
+        // smooth at any zoom — the same ~4px-per-segment density the arcs use.
+        int const segments = std::clamp(static_cast<int>(std::ceil((2.0f * b2_pi * radiusPx) / 4.0f)), 24, 128);
+        float const step = (2.0f * b2_pi) / static_cast<float>(segments);
+        auto point = [&](int i) {
+            float const a = step * static_cast<float>(i);
+            return moth_ui::FloatVec2{ centrePx.x + (radiusPx * std::cos(a)),
+                                       centrePx.y + (radiusPx * std::sin(a)) };
+        };
+        moth_ui::FloatVec2 prev = point(0);
+        for (int i = 1; i <= segments; ++i) {
+            moth_ui::FloatVec2 const cur = point(i);
+            graphics.DrawLineF(prev, cur);
+            prev = cur;
+        }
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
     void DrawProjectiles(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera) {
