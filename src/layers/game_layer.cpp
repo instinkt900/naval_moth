@@ -201,6 +201,7 @@ namespace naval {
         }
 
         DrawHelmPanel();
+        DrawWeaponControls();
         DrawAggroDebug();
     }
 
@@ -303,15 +304,15 @@ namespace naval {
             helm.rudderCmd = 0.0f;
         }
 
-        // Per-weapon controls (arc, auto-fire, manual fire, target picture).
-        DrawWeaponControls();
-
         ImGui::End();
     }
 
     void GameLayer::DrawWeaponControls() {
+        ImGui::Begin("Weapons");
         auto* armament = m_registry.try_get<Armament>(m_ship);
         if (armament == nullptr) {
+            ImGui::TextUnformatted("No armament");
+            ImGui::End();
             return;
         }
         constexpr float kMetresPerSecToKnots = 1.94384f;
@@ -372,5 +373,6 @@ namespace naval {
 
             ImGui::PopID();
         }
+        ImGui::End();
     }
 }

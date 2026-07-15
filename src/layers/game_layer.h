@@ -42,8 +42,8 @@ namespace naval {
         // ship, as an alternative to clicking waypoints.
         void DrawHelmPanel();
 
-        // Per-weapon rows within the helm window: arc and auto-fire toggles, a
-        // manual fire button, and the locked contact's picture.
+        // The Weapons window: a per-weapon row with arc/spread/auto-fire toggles,
+        // a manual fire button, and the locked contact's picture.
         void DrawWeaponControls();
 
         // ImGui window with live sliders over the shared aggro tuning, for
