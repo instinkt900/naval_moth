@@ -53,10 +53,10 @@ namespace naval {
             weapon.arcHalfAngle = weaponDef.arcHalfAngle;
             weapon.range = weaponDef.range;
             weapon.spread = weaponDef.spread;
+            weapon.muzzleVelocity = weaponDef.muzzleVelocity;
+            weapon.damage = weaponDef.damage;
             weapon.cooldown = weaponDef.cooldown;
-            weapon.projectileSpeed = projectileDef.speed;
             weapon.projectileRadiusM = projectileDef.radiusM;
-            weapon.projectileDamage = projectileDef.damage;
             weapon.projectileColor = projectileDef.color;
             armament.weapons.push_back(weapon);
         }

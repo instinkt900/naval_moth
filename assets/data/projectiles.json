@@ -1,26 +1,22 @@
 {
     "cannonball": {
-        "speed": 20.0,
         "radiusM": 0.1,
-        "damage": 5.0,
         "color": [1.0, 0.9, 0.5, 1.0]
     },
     "basic_shell": {
-        "speed": 100.0,
         "radiusM": 1.0,
-        "damage": 1.0,
         "color": [1.0, 0.9, 0.5, 1.0]
     },
     "large_shell": {
-        "speed": 100.0,
         "radiusM": 2.0,
-        "damage": 15.0,
         "color": [1.0, 0.9, 0.5, 1.0]
     },
-    "giant_shell": {
-        "speed": 150.0,
+    "ap_mark_8": {
         "radiusM": 3.0,
-        "damage": 20.0,
+        "color": [1.0, 0.9, 0.5, 1.0]
+    },
+    "shell_127": {
+        "radiusM": 2.5,
         "color": [1.0, 0.9, 0.5, 1.0]
     }
 }

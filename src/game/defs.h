@@ -16,12 +16,11 @@ namespace naval::defs {
     // validated when the database loads, so a bad id fails at startup rather
     // than at spawn time.
 
-    // A straight-shot projectile. Angles are irrelevant; it just travels. How
-    // far it flies is governed by the firing weapon's range, not the projectile.
+    // A projectile's visuals — how a shot looks in flight. Speed and damage are
+    // characteristics of the firing weapon now, not the projectile; a projectile
+    // only says how the shot is drawn.
     struct Projectile {
-        float speed = 0.0f;   // m/s
         float radiusM = 0.0f; // draw radius, metres
-        float damage = 0.0f;  // hit points removed from a hull it strikes
         moth_ui::Color color;
     };
 
@@ -29,7 +28,9 @@ namespace naval::defs {
     // range, respecting cooldown. The firing arc's centre bearing comes from the
     // hull mount; arcHalfAngle is the half-width to either side of it.
     struct Weapon {
-        std::string projectile;   // id into the projectile table
+        std::string projectile;      // id into the projectile table (its visuals)
+        float muzzleVelocity = 0.0f; // m/s the shot leaves the barrel at
+        float damage = 0.0f;         // hit points removed from a hull it strikes
         float cooldown = 0.0f;    // seconds between shots
         float range = 0.0f;       // metres
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees)

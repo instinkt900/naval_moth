@@ -124,10 +124,12 @@ namespace naval {
         float spread = 0.0f;                // rad, half-angle of the spread disc over the target (radius = range * tan)
         float cooldown = 0.0f;              // s between shots
 
-        // Projectile spec, copied from the database so firing needs no lookup.
-        float projectileSpeed = 0.0f;   // m/s the shot travels at
+        // Shot stats, copied from the database so firing needs no lookup. Speed
+        // and damage are the weapon's; the draw radius and colour come from its
+        // projectile (visuals).
+        float muzzleVelocity = 0.0f;    // m/s the shot leaves the barrel at
+        float damage = 0.0f;            // hit points removed on impact
         float projectileRadiusM = 0.0f; // shot draw radius, metres
-        float projectileDamage = 0.0f;  // hit points removed on impact
         moth_ui::Color projectileColor; // shot draw colour
 
         float cooldownRemaining = 0.0f; // s until it can fire again

@@ -51,6 +51,7 @@ distinct.
 Weapons are components mounted on a ship. Each weapon carries:
 
 - a **projectile type** (cannonball, missile, torpedo, …),
+- a **muzzle velocity**,
 - a **damage** value,
 - a **shot cooldown**, and
 - **targeting parameters**: firing arc, a range band (below), and which enemy
@@ -126,12 +127,14 @@ Five definition sets, cross-referenced by id:
 
 - **Hulls** — structural identity: propulsion handling, hull dimensions and render
   spec, base health, and the weapon mount points a hull carries.
-- **Weapons** — a projectile reference, damage, shot cooldown, and targeting
-  parameters (firing arc, the min/effective/max range band, engageable enemy
-  types).
-- **Projectiles** — behaviour (straight-shot cannonball first, later homing), speed,
-  and splash. A straight shot's travel is bounded by the firing weapon's range;
-  self-guided munitions gain their own run distance when they arrive.
+- **Weapons** — a projectile reference, muzzle velocity, damage, shot cooldown, and
+  targeting parameters (firing arc, the min/effective/max range band, engageable
+  enemy types).
+- **Projectiles** — a shot's visuals (draw size and colour) and, later, its flight
+  behaviour (straight-shot now, homing for missiles and torpedoes). Speed and
+  damage live on the firing weapon. A straight shot's travel is bounded by the
+  weapon's range; self-guided munitions gain their own run distance when they
+  arrive.
 - **Enemies** — a hull plus a weapon loadout and an AI behaviour profile; what the
   game spawns as an opponent.
 - **Player** — the player's own ship: a hull (and later a chosen loadout). A single

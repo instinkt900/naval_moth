@@ -58,9 +58,7 @@ namespace naval::defs {
         nlohmann::json const projectilesJson = ReadJson(dir / "projectiles.json");
         for (auto const& [id, j] : projectilesJson.items()) {
             Projectile p;
-            p.speed = j.at("speed").get<float>();
             p.radiusM = j.at("radiusM").get<float>();
-            p.damage = j.at("damage").get<float>();
             p.color = ParseColor(j.at("color"));
             db.m_projectiles.emplace(id, p);
         }
@@ -69,6 +67,8 @@ namespace naval::defs {
         for (auto const& [id, j] : weaponsJson.items()) {
             Weapon w;
             w.projectile = j.at("projectile").get<std::string>();
+            w.muzzleVelocity = j.at("muzzleVelocity").get<float>();
+            w.damage = j.at("damage").get<float>();
             w.cooldown = j.at("cooldown").get<float>();
             w.range = j.at("range").get<float>();
             w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad;

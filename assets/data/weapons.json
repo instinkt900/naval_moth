@@ -1,6 +1,8 @@
 {
     "auto_gun": {
         "projectile": "basic_shell",
+        "muzzleVelocity": 100.0,
+        "damage": 1.0,
         "cooldown": 0.1,
         "range": 130.0,
         "arcDegrees": 36.0,
@@ -8,6 +10,8 @@
     },
     "broadside_gun": {
         "projectile": "large_shell",
+        "muzzleVelocity": 100.0,
+        "damage": 15.0,
         "cooldown": 2.0,
         "range": 300.0,
         "arcDegrees": 65.0,
@@ -15,16 +19,29 @@
     },
     "broadside_cannon": {
         "projectile": "cannonball",
+        "muzzleVelocity": 20.0,
+        "damage": 5.0,
         "cooldown": 2.0,
         "range": 15.0,
         "arcDegrees": 35.0,
         "spreadDegrees": 5.0
     },
-    "big_gun": {
-        "projectile": "giant_shell",
-        "cooldown": 8.0,
-        "range": 1400.0,
+    "mark-7": {
+        "projectile": "ap_mark_8",
+        "muzzleVelocity": 760.0,
+        "damage": 20.0,
+        "cooldown": 15.0,
+        "range": 3800.0,
         "arcDegrees": 15.0,
-        "spreadDegrees": 2.0
+        "spreadDegrees": 0.5
+    },
+    "mark-12": {
+        "projectile": "shell_127",
+        "muzzleVelocity": 790.0,
+        "damage": 5.0,
+        "cooldown": 0.25,
+        "range": 1800.0,
+        "arcDegrees": 90.0,
+        "spreadDegrees": 1.0
     }
 }

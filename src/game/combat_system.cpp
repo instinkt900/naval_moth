@@ -267,8 +267,8 @@ namespace naval {
                 b2Vec2 const aimPoint{ targetPos.x + (targetCos * localAim.x) - (targetSin * localAim.y),
                                        targetPos.y + (targetSin * localAim.x) + (targetCos * localAim.y) };
                 b2Vec2 const targetVel = targetBody->GetLinearVelocity();
-                float const flightTime = weapon.projectileSpeed > 0.0f
-                                             ? (aimPoint - mountPos).Length() / weapon.projectileSpeed
+                float const flightTime = weapon.muzzleVelocity > 0.0f
+                                             ? (aimPoint - mountPos).Length() / weapon.muzzleVelocity
                                              : 0.0f;
 
                 // The aim point and its spread disc, refreshed every tick a target
@@ -309,10 +309,10 @@ namespace naval {
 
                 Projectile shot;
                 shot.position = mountPos;
-                shot.velocity = weapon.projectileSpeed * aim;
+                shot.velocity = weapon.muzzleVelocity * aim;
                 shot.remaining = fuzeRange;
                 shot.radiusM = weapon.projectileRadiusM;
-                shot.damage = weapon.projectileDamage;
+                shot.damage = weapon.damage;
                 shot.color = weapon.projectileColor;
                 shot.target = enemyFaction;
                 spawned.push_back(shot);
