@@ -178,10 +178,7 @@ namespace naval {
             return;
         }
         b2Body* body = registry.get<Physics>(ship).body;
-        b2Vec2 const shipPos = body->GetPosition();
         float const shipAngle = body->GetAngle();
-        float const cosA = std::cos(shipAngle);
-        float const sinA = std::sin(shipAngle);
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
 
@@ -192,10 +189,7 @@ namespace naval {
             if (!weapon.showArc) {
                 continue;
             }
-            b2Vec2 const off = weapon.mountOffset;
-            b2Vec2 const mountWorld{ shipPos.x + (cosA * off.x) - (sinA * off.y),
-                                     shipPos.y + (sinA * off.x) + (cosA * off.y) };
-            moth_ui::FloatVec2 const originPx = camera.WorldToScreen(mountWorld);
+            moth_ui::FloatVec2 const originPx = camera.WorldToScreen(body->GetWorldPoint(weapon.mountOffset));
 
             float const rangePx = camera.MToPx(weapon.range);
             float const arcCentre = shipAngle + weapon.bearing;
@@ -233,10 +227,6 @@ namespace naval {
             return;
         }
         b2Body* body = registry.get<Physics>(ship).body;
-        b2Vec2 const shipPos = body->GetPosition();
-        float const shipAngle = body->GetAngle();
-        float const cosA = std::cos(shipAngle);
-        float const sinA = std::sin(shipAngle);
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
@@ -247,10 +237,7 @@ namespace naval {
                 continue;
             }
             // Aim line from the mount's world position out to the aim point.
-            b2Vec2 const off = weapon.mountOffset;
-            b2Vec2 const mountWorld{ shipPos.x + (cosA * off.x) - (sinA * off.y),
-                                     shipPos.y + (sinA * off.x) + (cosA * off.y) };
-            moth_ui::FloatVec2 const originPx = camera.WorldToScreen(mountWorld);
+            moth_ui::FloatVec2 const originPx = camera.WorldToScreen(body->GetWorldPoint(weapon.mountOffset));
             moth_ui::FloatVec2 const aimPx = camera.WorldToScreen(weapon.aimWorld);
             graphics.DrawLineF(originPx, aimPx);
 

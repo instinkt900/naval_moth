@@ -246,10 +246,7 @@ namespace naval {
             }
 
             b2Body* body = shooters.get<Physics>(shooter).body;
-            b2Vec2 const shipPos = body->GetPosition();
             float const shipAngle = body->GetAngle();
-            float const cosA = std::cos(shipAngle);
-            float const sinA = std::sin(shipAngle);
 
             for (auto& weapon : shooters.get<Armament>(shooter).weapons) {
                 weapon.cooldownRemaining = std::max(0.0f, weapon.cooldownRemaining - dt);
@@ -257,11 +254,10 @@ namespace naval {
 
                 float const arcCentre = shipAngle + weapon.bearing;
 
-                // The mount's world position: its hull-local offset rotated into
-                // the ship's frame. Aiming and firing both originate here.
-                b2Vec2 const off = weapon.mountOffset;
-                b2Vec2 const mountPos{ shipPos.x + (cosA * off.x) - (sinA * off.y),
-                                       shipPos.y + (sinA * off.x) + (cosA * off.y) };
+                // The mount's world position: its hull-local offset carried into
+                // the ship's frame by the body's own transform. Aiming and firing
+                // both originate here.
+                b2Vec2 const mountPos = body->GetWorldPoint(weapon.mountOffset);
 
                 // The weapon makes no choice of its own: it only asks whether the
                 // ship's designated contact is inside its arc and range. So a
