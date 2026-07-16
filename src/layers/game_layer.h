@@ -17,6 +17,8 @@ namespace moth_graphics::graphics {
 }
 
 namespace naval {
+    struct FireOrder;
+
     // The play space: owns the ECS registry and the Box2D world, steps the
     // simulation at the fixed tick, and renders the sea, ship and move target.
     // Click anywhere to command the ship to that point.
@@ -44,12 +46,22 @@ namespace naval {
         // ship, as an alternative to clicking waypoints.
         void DrawHelmPanel();
 
-        // The Target window: the designated contact's picture, how much of the
-        // battery bears on it, and the ship's single Fire/Hold order.
+        // The Target window, which holds the whole gunnery picture: the
+        // designated contact leads it (its picture, how much of the battery
+        // bears, and the ship's fire orders — Fire/Hold, Salvo, weapons
+        // release), and the per-gun battery list sits beneath.
         void DrawTargetPanel();
 
-        // The Weapons window: a per-weapon row with the arc/spread draw toggles
-        // and what that gun is doing about the ship's order.
+        // The weapons-release control at the foot of the Target window. Split
+        // out because it is the one order that stands without a designated
+        // contact, so it is drawn on both of that window's paths rather than
+        // only the one that has a target to describe.
+        void DrawWeaponsRelease(FireOrder& order);
+
+        // The battery list at the foot of the Target window (no longer its own
+        // window): a per-gun row of an enable tick that switches the gun in or
+        // out of the ship's fire orders, the gun's name, its arc/spread draw
+        // toggles, and a line of what that gun is doing about the order.
         void DrawWeaponControls();
 
         // ImGui window with live sliders over the shared aggro tuning, for

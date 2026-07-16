@@ -19,8 +19,9 @@ namespace naval {
         const moth_ui::Color kBow{ 0.90f, 0.35f, 0.30f, 1.0f };
         const moth_ui::Color kTargetColor{ 0.95f, 0.85f, 0.40f, 1.0f };
         const moth_ui::Color kLineColor{ 0.55f, 0.65f, 0.75f, 1.0f };
-        const moth_ui::Color kArcColor{ 0.35f, 0.45f, 0.55f, 0.6f };       // firing arc at rest
-        const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f }; // arc with a target in it
+        const moth_ui::Color kArcDisabledColor{ 0.45f, 0.45f, 0.45f, 0.30f }; // arc of a gun switched out of the battery
+        const moth_ui::Color kArcEnabledColor{ 0.70f, 0.25f, 0.25f, 0.45f };  // arc of an armed gun with nothing bearing
+        const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f };    // arc with a target in it
         const moth_ui::Color kAggroRingColor{ 0.80f, 0.30f, 0.30f, 0.20f };       // aggro range, ship still patrolling
         const moth_ui::Color kAggroRingActiveColor{ 0.95f, 0.35f, 0.30f, 0.65f }; // aggro range once the ship has locked on
         const moth_ui::Color kSpreadColor{ 0.95f, 0.85f, 0.35f, 0.6f };           // debug spread preview (aim line + disc)
@@ -224,6 +225,11 @@ namespace naval {
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
 
+        // Alpha blend so the arc colours' alpha reads: the scene otherwise draws
+        // opaque (BlendMode::Replace ignores alpha), which would show every arc
+        // at full strength and flatten the disabled/enabled/active distinction.
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+
         // Each weapon's arc: two radial edges out to its range plus the outer
         // sweep between them, brightening when a target sits inside. The arc
         // originates from the mount's world position, not the hull centre.
@@ -242,13 +248,25 @@ namespace naval {
                                            originPx.y + (rangePx * std::sin(angle)) };
             };
 
-            graphics.SetColor(weapon.hasTarget ? kArcActiveColor : kArcColor);
+            // A switched-out gun draws a faded grey arc, an armed one a faint
+            // red; an armed gun brightens to the active colour with a target
+            // inside. A disabled gun stays grey even when something bears, since
+            // it will not shoot whatever comes into it.
+            moth_ui::Color arcColor = kArcEnabledColor;
+            if (!weapon.enabled) {
+                arcColor = kArcDisabledColor;
+            } else if (weapon.hasTarget) {
+                arcColor = kArcActiveColor;
+            }
+            graphics.SetColor(arcColor);
 
             float const arcAngle = 2.0f * weapon.arcHalfAngle;
             graphics.DrawLineF(originPx, edge(start));               // near radial edge
             DrawSweep(graphics, originPx, rangePx, start, arcAngle); // the outer sweep between them
             graphics.DrawLineF(originPx, edge(start + arcAngle));    // far radial edge
         }
+
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
     void DrawWeaponSpread(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {

@@ -146,6 +146,35 @@ namespace naval {
             return entt::null;
         }
 
+        // The nearest hull of `enemyFaction` whose shape overlaps a weapon's arc
+        // and range, measured from `origin`, or entt::null if none qualifies.
+        // Only free fire reaches this: with the guns tight a weapon is told what
+        // to shoot and chooses nothing for itself.
+        entt::entity AcquireTarget(entt::registry& registry, Faction enemyFaction,
+                                   b2Vec2 origin, float arcCentre, float range, float arcHalfAngle) {
+            entt::entity best = entt::null;
+            float bestDist = std::numeric_limits<float>::max();
+            for (auto target : registry.view<Physics, Renderable, Combatant>()) {
+                if (registry.get<Combatant>(target).faction != enemyFaction) {
+                    continue;
+                }
+                auto const& renderable = registry.get<Renderable>(target);
+                b2Body* body = registry.get<Physics>(target).body;
+                b2Vec2 const centre = body->GetPosition();
+                if (!SectorOverlapsHull(origin, arcCentre, range, arcHalfAngle,
+                                        centre, body->GetAngle(),
+                                        renderable.halfLengthM, renderable.halfBeamM)) {
+                    continue;
+                }
+                float const dist = (centre - origin).Length();
+                if (dist < bestDist) {
+                    best = target;
+                    bestDist = dist;
+                }
+            }
+            return best;
+        }
+
         // True if `target` is something `enemyFaction`'s guns may still shoot at:
         // a live hull of that faction that is still in the registry. A destroyed
         // hull loses its Combatant as it begins sinking, so this goes false the
@@ -235,12 +264,17 @@ namespace naval {
                 order.firing = false;
             }
 
+            // Take the salvo latch for the whole ship before laying a gun, so
+            // one press is one round from each — clearing it per weapon would
+            // let the first gun swallow the order for the rest of the battery.
+            bool const salvo = order.salvo;
+            order.salvo = false;
+
             b2Body* body = shooters.get<Physics>(shooter).body;
             float const shipAngle = body->GetAngle();
 
             for (auto& weapon : shooters.get<Armament>(shooter).weapons) {
                 weapon.cooldownRemaining = std::max(0.0f, weapon.cooldownRemaining - dt);
-                weapon.hasTarget = false;
 
                 float const arcCentre = shipAngle + weapon.bearing;
 
@@ -249,25 +283,39 @@ namespace naval {
                 // both originate here.
                 b2Vec2 const mountPos = body->GetWorldPoint(weapon.mountOffset);
 
-                // The weapon makes no choice of its own: it only asks whether the
-                // ship's designated contact is inside its arc and range. So a
-                // gun that cannot bear holds, and one the target drifts into
-                // picks it up on that tick without being told again.
-                entt::entity const target = order.target;
-                if (target == entt::null) {
-                    weapon.target = entt::null;
-                    continue;
+                // Whether the designated contact bears gets asked whatever the
+                // orders are: the target ring and the "guns bear" count both
+                // report exactly this, and it is what gives that contact its
+                // priority when laying the gun below.
+                entt::entity const designated = order.target;
+                bool bears = false;
+                if (designated != entt::null) {
+                    auto const& designatedHull = registry.get<Renderable>(designated);
+                    b2Body* designatedBody = registry.get<Physics>(designated).body;
+                    bears = SectorOverlapsHull(mountPos, arcCentre, weapon.range, weapon.arcHalfAngle,
+                                               designatedBody->GetPosition(), designatedBody->GetAngle(),
+                                               designatedHull.halfLengthM, designatedHull.halfBeamM);
                 }
-                auto const& targetHull = registry.get<Renderable>(target);
-                b2Body* targetBody = registry.get<Physics>(target).body;
-                if (!SectorOverlapsHull(mountPos, arcCentre, weapon.range, weapon.arcHalfAngle,
-                                        targetBody->GetPosition(), targetBody->GetAngle(),
-                                        targetHull.halfLengthM, targetHull.halfBeamM)) {
-                    weapon.target = entt::null;
-                    continue;
+                weapon.hasTarget = bears;
+
+                // Lay the gun. With the guns tight the weapon makes no choice of
+                // its own: it only asks whether the ship's designated contact is
+                // inside its arc and range. So a gun that cannot bear holds, and
+                // one the target drifts into picks it up on that tick without
+                // being told again. Free fire is the one exception — and even
+                // then the designated contact is taken first, so releasing the
+                // guns never pulls one off the mark the ship chose.
+                entt::entity target = designated;
+                if (!bears) {
+                    target = order.freeFire ? AcquireTarget(registry, enemyFaction, mountPos, arcCentre,
+                                                            weapon.range, weapon.arcHalfAngle)
+                                            : entt::null;
                 }
                 weapon.target = target;
-                weapon.hasTarget = true;
+                if (target == entt::null) {
+                    continue;
+                }
+                b2Body* targetBody = registry.get<Physics>(target).body;
 
                 // Aim at the target's centre, led for its motion: aim where the
                 // hull will be when the shot lands (first-order intercept — time
@@ -292,7 +340,21 @@ namespace naval {
                 // Everything above happens whether or not the ship is shooting,
                 // so a held gun still tracks its mark and shows a live aim
                 // solution. Only the shot itself waits on the order.
-                if (!order.firing || weapon.cooldownRemaining > 0.0f) {
+                //
+                // A gun switched out of the battery holds regardless of the
+                // order — the enable tick is each gun's own veto, checked ahead
+                // of the ship's orders below, and it tracks either way.
+                if (!weapon.enabled) {
+                    continue;
+                }
+                // Three ways to be allowed it, any one of which is enough: the
+                // standing order, this tick's salvo, or weapons free. This is
+                // only the trigger — what the gun is laid on was settled above,
+                // and free fire is what widened that, not this.
+                if (!order.firing && !salvo && !order.freeFire) {
+                    continue;
+                }
+                if (weapon.cooldownRemaining > 0.0f) {
                     continue;
                 }
 

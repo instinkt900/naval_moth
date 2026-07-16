@@ -262,7 +262,6 @@ namespace naval {
 
         DrawHelmPanel();
         DrawTargetPanel();
-        DrawWeaponControls();
         DrawAggroDebug();
     }
 
@@ -396,77 +395,111 @@ namespace naval {
 
         ImGui::Begin("Target");
 
-        // The weapons system drops the order the moment its contact dies, so an
-        // empty order here is the normal end of an engagement, not an error.
-        if (order.target == entt::null || !m_registry.valid(order.target)) {
+        // The designated contact leads the window — its picture and the orders
+        // that act on it. The weapons system drops the order the moment its
+        // contact dies, so an empty order here is the normal end of an
+        // engagement, not an error; free fire and the battery list below stand
+        // without a contact, so only this leading block is gated on there being
+        // one.
+        if (order.target != entt::null && m_registry.valid(order.target)) {
+            constexpr float kMetresPerSecToKnots = 1.94384f;
+            b2Body* self = m_registry.get<Physics>(m_ship).body;
+            b2Vec2 const shipPos = self->GetPosition();
+            float const shipAngle = self->GetAngle();
+
+            b2Body* contact = m_registry.get<Physics>(order.target).body;
+            b2Vec2 const toContact = contact->GetPosition() - shipPos;
+            float const rangeM = toContact.Length();
+            float const speedKn = contact->GetLinearVelocity().Length() * kMetresPerSecToKnots;
+            // Bearing is relative to our own bow, heading is the contact's own
+            // course — the two questions a gunnery picture has to answer.
+            float const bearingDeg =
+                Norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
+            float const headingDeg = Norm360(contact->GetAngle() * moth_ui::kRadToDeg);
+
+            char const* type = "contact";
+            if (auto const* id = m_registry.try_get<Identity>(order.target); id != nullptr) {
+                type = id->name.c_str();
+            }
+            ImGui::TextUnformatted(type);
+            ImGui::Separator();
+            ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
+            ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
+
+            if (auto const* health = m_registry.try_get<Health>(order.target);
+                health != nullptr && health->max > 0.0f) {
+                ImGui::ProgressBar(health->current / health->max, ImVec2(-1.0f, 0.0f),
+                                   fmt::format("{:.0f} / {:.0f}", health->current, health->max).c_str());
+            }
+            ImGui::Separator();
+
+            // How much of the battery can actually reach the contact right now.
+            // The count is the honest answer to "why isn't anything happening?"
+            // after pressing Fire with the target abaft the beam of every gun.
+            // It counts hulls that bear, not guns switched in — a bearing gun
+            // held out of the battery still shows here, and its row below says
+            // it is disabled.
+            int bearing = 0;
+            int total = 0;
+            if (auto const* armament = m_registry.try_get<Armament>(m_ship); armament != nullptr) {
+                total = static_cast<int>(armament->weapons.size());
+                for (auto const& weapon : armament->weapons) {
+                    bearing += weapon.hasTarget ? 1 : 0;
+                }
+            }
+            ImGui::TextUnformatted(fmt::format("{} of {} guns bear", bearing, total).c_str());
+
+            // One button for the whole ship: every gun that bears and is
+            // switched in fires until the contact is dead or this is clicked
+            // again. Never disabled for want of a gun bearing — ordering fire
+            // while manoeuvring onto the target is the point, and the guns join
+            // in as the arcs come onto it.
+            if (ImGui::Button(order.firing ? "Hold" : "Fire")) {
+                order.firing = !order.firing;
+            }
+
+            // A salvo beside it, being the same order with less commitment: one
+            // round from whatever is loaded, bearing and switched in, and no
+            // standing order left set behind it. Unlike Fire it needs no
+            // cancelling, which is why it is a plain button and not a second
+            // thing that latches.
+            ImGui::SameLine();
+            if (ImGui::Button("Salvo")) {
+                order.salvo = true;
+            }
+        } else {
             ImGui::TextUnformatted("No target designated");
             ImGui::TextUnformatted("Click a contact to designate it.");
-            ImGui::End();
-            return;
         }
 
-        constexpr float kMetresPerSecToKnots = 1.94384f;
-        b2Body* self = m_registry.get<Physics>(m_ship).body;
-        b2Vec2 const shipPos = self->GetPosition();
-        float const shipAngle = self->GetAngle();
-
-        b2Body* contact = m_registry.get<Physics>(order.target).body;
-        b2Vec2 const toContact = contact->GetPosition() - shipPos;
-        float const rangeM = toContact.Length();
-        float const speedKn = contact->GetLinearVelocity().Length() * kMetresPerSecToKnots;
-        // Bearing is relative to our own bow, heading is the contact's own
-        // course — the two questions a gunnery picture has to answer.
-        float const bearingDeg =
-            Norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
-        float const headingDeg = Norm360(contact->GetAngle() * moth_ui::kRadToDeg);
-
-        char const* type = "contact";
-        if (auto const* id = m_registry.try_get<Identity>(order.target); id != nullptr) {
-            type = id->name.c_str();
-        }
-        ImGui::TextUnformatted(type);
-        ImGui::Separator();
-        ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
-        ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
-
-        if (auto const* health = m_registry.try_get<Health>(order.target);
-            health != nullptr && health->max > 0.0f) {
-            ImGui::ProgressBar(health->current / health->max, ImVec2(-1.0f, 0.0f),
-                               fmt::format("{:.0f} / {:.0f}", health->current, health->max).c_str());
-        }
-        ImGui::Separator();
-
-        // How much of the battery can actually reach the contact right now. The
-        // count is the honest answer to "why isn't anything happening?" after
-        // pressing Fire with the target abaft the beam of every gun.
-        int bearing = 0;
-        int total = 0;
-        if (auto const* armament = m_registry.try_get<Armament>(m_ship); armament != nullptr) {
-            total = static_cast<int>(armament->weapons.size());
-            for (auto const& weapon : armament->weapons) {
-                bearing += weapon.hasTarget ? 1 : 0;
-            }
-        }
-        ImGui::TextUnformatted(fmt::format("{} of {} guns bear", bearing, total).c_str());
-
-        // One button for the whole ship: every gun that bears fires until the
-        // contact is dead or this is clicked again. Never disabled for want of a
-        // gun bearing — ordering fire while manoeuvring onto the target is the
-        // point, and the guns join in as the arcs come onto it.
-        if (ImGui::Button(order.firing ? "Hold" : "Fire")) {
-            order.firing = !order.firing;
-        }
+        // Free fire and the battery both answer to no particular contact, so
+        // they sit below the leading block and show whether or not one is set.
+        // The per-gun enable ticks in the battery gate all three orders above.
+        DrawWeaponsRelease(order);
+        DrawWeaponControls();
 
         ImGui::End();
     }
 
+    void GameLayer::DrawWeaponsRelease(FireOrder& order) {
+        // A checkbox rather than a button like the two above it: those are acts,
+        // this is a state the ship stays in, and a checkbox shows whether it is
+        // set without the player having to work out whether a button's label is
+        // naming the mode or the way out of it.
+        ImGui::Separator();
+        ImGui::Checkbox("Free fire", &order.freeFire);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Every gun engages the nearest foe it can bear on.\n"
+                              "The designated target still comes first.");
+        }
+    }
+
     void GameLayer::DrawWeaponControls() {
         auto const& order = m_registry.get<FireOrder>(m_ship);
-        ImGui::Begin("Weapons");
         auto* armament = m_registry.try_get<Armament>(m_ship);
         if (armament == nullptr) {
+            ImGui::Separator();
             ImGui::TextUnformatted("No armament");
-            ImGui::End();
             return;
         }
 
@@ -474,22 +507,40 @@ namespace naval {
             ImGui::Separator();
             Weapon& weapon = armament->weapons[i];
             ImGui::PushID(static_cast<int>(i));
-            ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
 
+            // One row: the enable tick, the gun's name, then its two draw
+            // toggles. Unticked, the gun is switched out of the fire orders and
+            // holds through all of them while still tracking and drawing. This
+            // is the one per-weapon fire control — a gun's only say in the
+            // engagement is whether it takes part at all. The tick's label is
+            // hidden (the name beside it labels it); PushID keeps it unique.
+            ImGui::Checkbox("##enable", &weapon.enabled);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
+            ImGui::SameLine();
             ImGui::Checkbox("Show arc", &weapon.showArc);
             ImGui::SameLine();
             ImGui::Checkbox("Show spread", &weapon.showSpread);
 
-            // What this gun is doing about the ship's order. Read-only: the
-            // order is the Target window's to give, and a gun has no say in it
-            // beyond whether it can reach.
+            // What this gun is doing about the ship's order. Read-only apart from
+            // the enable tick above: the order itself is the leading block's to
+            // give.
+            //
+            // Read off the gun's own mark, not hasTarget, so that under free
+            // fire a gun laid on a contact of its own says so instead of
+            // reporting "no bearing" on the strength of the designated one. A
+            // switched-out gun reads "disabled" ahead of any of that, since it
+            // is holding whatever it can reach.
+            bool const laid = weapon.target != entt::null && m_registry.valid(weapon.target);
             char const* status = "no bearing";
-            if (weapon.cooldownRemaining > 0.0f) {
+            if (!weapon.enabled) {
+                status = "disabled";
+            } else if (weapon.cooldownRemaining > 0.0f) {
                 status = "reloading";
-            } else if (weapon.hasTarget) {
-                status = order.firing ? "firing" : "bears, holding";
+            } else if (laid) {
+                status = (order.firing || order.freeFire) ? "firing" : "bears, holding";
             }
-            if (weapon.cooldownRemaining > 0.0f) {
+            if (weapon.enabled && weapon.cooldownRemaining > 0.0f) {
                 ImGui::TextUnformatted(
                     fmt::format("{} {:.1f}s", status, weapon.cooldownRemaining).c_str());
             } else {
@@ -498,6 +549,5 @@ namespace naval {
 
             ImGui::PopID();
         }
-        ImGui::End();
     }
 }

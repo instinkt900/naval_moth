@@ -12,13 +12,18 @@ namespace naval {
     // nothing on its own: it tracks the contact its ship has designated whenever
     // that contact is inside its arc and range, and shoots it only while the
     // order says to fire and the gun is off cooldown. So a gun the target drifts
-    // into range of joins in unprompted, and one that cannot bear holds.
+    // into range of joins in unprompted, and one that cannot bear holds. Free
+    // fire is the sole exception, and the only thing here that lets a gun pick
+    // its own mark: it engages the nearest foe it can bear on, though never
+    // before the designated contact if that one is also in reach.
     //
     // This is also where an order ends: a designated contact that has died or
     // left the registry clears the order outright, which is what stops a ship
-    // firing at a wreck. Also advances cooldowns and records which weapons bear
-    // (for rendering). Each shot is heard, and felt, at its gun's mount. `dt` is
-    // the tick length in seconds.
+    // firing at a wreck. A salvo ends here too — it is consumed and cleared on
+    // the first update after it is ordered, so it costs the battery one round
+    // rather than becoming a state anything has to turn back off. Also advances
+    // cooldowns and records which weapons bear (for rendering). Each shot is
+    // heard, and felt, at its gun's mount. `dt` is the tick length in seconds.
     void UpdateWeapons(entt::registry& registry, Audio& audio, CameraShake& shake, float dt);
 
     // The hull of `faction` under a world point, or entt::null if none is there

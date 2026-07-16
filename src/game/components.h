@@ -148,15 +148,30 @@ namespace naval {
         float cooldownRemaining = 0.0f; // s until it can fire again
         bool hasTarget = false;         // the ship's designated contact bears this tick
 
-        // Player-facing controls, one set per weapon.
+        // Whether this gun answers the ship's fire orders at all. Switched out
+        // in the Target window it stays part of the battery on paper but holds
+        // fire through Fire, Salvo and free fire alike — it still tracks the
+        // contact and shows a live aim solution, it simply never pulls the
+        // trigger. This is a gun's one say in the engagement: the order reaches
+        // the whole ship, and each gun answers only whether it is switched in.
+        // Defaults on, and only the player ever turns it off — an enemy battery,
+        // which nothing unticks, fires in full.
+        bool enabled = true;
+
+        // Player-facing draw toggles, one set per weapon.
         bool showArc = true;     // draw this weapon's firing arc
         bool showSpread = false; // draw a debug preview of the spread disc over the current target
 
-        // The ship's designated contact while this weapon bears on it, else
-        // entt::null — a weapon does not choose a target, it only answers
-        // whether the one the ship named is inside its arc and range (see
-        // FireOrder). Refreshed every update; read it only after registry.valid,
-        // as the target may be destroyed between updates.
+        // The contact this weapon is laid on, or entt::null if it can reach
+        // none — normally the ship's designated contact, and under free fire
+        // whatever else the gun found when that contact was out of its arc (see
+        // FireOrder). Distinct from hasTarget above, which stays a strict answer
+        // about the *designated* contact: the two agree except under free fire,
+        // where a gun may be laid on something the ship never named. That is why
+        // the target ring and the "guns bear" count read hasTarget — they are
+        // reporting on the designated contact — while the gun's own status reads
+        // this. Refreshed every update; read it only after registry.valid, as
+        // the target may be destroyed between updates.
         entt::entity target = entt::null;
 
         // The current world aim point (the target's centre, led for its motion)
@@ -194,9 +209,32 @@ namespace naval {
     // Fire/Hold. An enemy's is issued by the aggro system, which fires as soon
     // as it has locked something. One component either way, so both sides shoot
     // down the same path rather than the AI having a private one.
+    //
+    // `firing`, `salvo` and `freeFire` are three ways to say shoot, and each
+    // grants a gun the shot on its own — they are not a mode dial. `firing` is
+    // the standing order on the designated contact; `salvo` is one round from
+    // whatever is loaded; `freeFire` releases the guns from the designated
+    // contact altogether. Free fire is the only one that lets a gun shoot at
+    // something the ship never named, which is why it alone changes what a
+    // weapon may aim at rather than just when it may pull the trigger.
     struct FireOrder {
         entt::entity target = entt::null; // the designated contact, or null for none
         bool firing = false;              // true = shoot it whenever a gun bears
+
+        // A single round from every gun that bears and is loaded, then done.
+        // A latch, not a state: the weapons system consumes it the tick after
+        // it is set and clears it, so it survives exactly one update however
+        // many frames the button is held. Guns still reloading miss it — the
+        // salvo is what the battery can fire *now*, not a volley it waits to
+        // assemble.
+        bool salvo = false;
+
+        // Weapons free: every gun engages the nearest foe it can bear on, of
+        // its own accord and without a designated contact. The designated
+        // contact still comes first for any gun that can reach it, so ordering
+        // free fire never pulls the battery off the mark you chose — it only
+        // finds work for the guns that could not reach it anyway.
+        bool freeFire = false;
     };
 
     // Which side a ship fights for. Weapons engage hulls of a different

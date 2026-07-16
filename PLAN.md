@@ -76,22 +76,44 @@ guns' own bearing test, it turns red exactly when the guns would actually shoot.
 
 The **Target window** shows the designated contact's picture — type, range,
 speed, bearing, heading and health — along with how much of the battery bears on
-it, and carries the single **Fire** button, which becomes **Hold** once fire is
-ordered. Fire is available whether or not anything bears: ordering fire while
+it, and carries the ship's fire orders. **Fire** becomes **Hold** once fire is
+ordered. It is available whether or not anything bears: ordering fire while
 still manoeuvring onto the target is the point, and each gun joins in of its own
 accord as its arc comes onto the contact.
 
 Fire continues until the contact is dead or Hold is clicked. Nothing else ends
 it, and a target that sinks clears the order outright.
 
+**Salvo** is the same order without the commitment: one round from every gun that
+bears and is loaded, then done. Guns still reloading miss it — a salvo is what the
+battery can throw at that moment, not a volley it waits to assemble. It leaves
+nothing set behind it, so it is the way to try the range without opening a
+sustained engagement.
+
+**Free fire** releases the guns from the designated contact: each engages the
+nearest foe it can bear on, of its own accord, and it needs no designated contact
+at all. It is the one order that lets a weapon choose what to shoot — Fire and
+Salvo only decide *when* the trigger comes, never *what* is under it. The
+designated contact still takes precedence for any gun that can reach it, so
+releasing the guns never pulls the battery off the mark you chose; it only finds
+work for the guns that could not reach that mark anyway.
+
+The three are not a mode dial — each grants the shot on its own, and they compose:
+free fire with a target designated and Fire ordered means the guns that bear on it
+concentrate, and the rest fight the ships they can see. All three act only on the
+guns ticked into the battery (see Per-weapon controls); a gun switched out holds
+through every one of them.
+
 ### Per-weapon controls
 
-The weapons panel lists every gun the active ship carries. Per weapon it offers a
-toggle for whether it **draws its firing arc** (so the display can be kept clean
-or one gun's coverage highlighted), the same for its **spread preview**, and a
-read-only **status** — bearing, holding, firing, or reloading. There is no
-per-weapon fire control: a gun has no say in the engagement beyond whether it can
-reach.
+The battery list sits at the foot of the Target window and names every gun the
+active ship carries. A tick beside each gun's name **switches it in or out of the
+fire orders**: unticked, it holds through Fire, Salvo and free fire alike while
+still tracking the contact and drawing its arc — a gun's one say in the engagement
+is whether it takes part at all. Per weapon there is also a toggle for whether it
+**draws its firing arc** (so the display can be kept clean or one gun's coverage
+highlighted), the same for its **spread preview**, and a read-only **status** —
+bearing, holding, firing, reloading, or disabled.
 
 The enemy AI issues the same order through the same path — its aggro lock *is* a
 fire order — so both sides shoot by identical rules rather than the AI having a
