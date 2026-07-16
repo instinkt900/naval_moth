@@ -1,5 +1,6 @@
 #include "game/propulsion_system.h"
 
+#include "game/angles.h"
 #include "game/components.h"
 
 #include <box2d/box2d.h>
@@ -109,13 +110,7 @@ namespace naval {
 
             // Turn toward the target, capped by the (speed-dependent) turn rate.
             float const desiredHeading = std::atan2(toTarget.y, toTarget.x);
-            float headingError = desiredHeading - body->GetAngle();
-            while (headingError > b2_pi) {
-                headingError -= 2.0f * b2_pi;
-            }
-            while (headingError < -b2_pi) {
-                headingError += 2.0f * b2_pi;
-            }
+            float const headingError = WrapPi(desiredHeading - body->GetAngle());
             float const yaw = std::clamp(headingError * kTurnGain, -effectiveTurnRate, effectiveTurnRate);
             body->SetAngularVelocity(yaw);
 

@@ -1,5 +1,6 @@
 #include "game/aggro_system.h"
 
+#include "game/angles.h"
 #include "game/components.h"
 
 #include <box2d/box2d.h>
@@ -11,18 +12,6 @@
 
 namespace naval {
     namespace {
-        // Wrap an angle to (-pi, pi], matching the heading-error handling in the
-        // propulsion system so both measure the shortest turn the same way.
-        float WrapPi(float a) {
-            while (a > b2_pi) {
-                a -= 2.0f * b2_pi;
-            }
-            while (a < -b2_pi) {
-                a += 2.0f * b2_pi;
-            }
-            return a;
-        }
-
         // Nearest living hull of a faction opposing `faction`, or entt::null if
         // there is none. `outDist` is set to its range when one is found.
         entt::entity NearestFoe(entt::registry& registry, entt::entity self,

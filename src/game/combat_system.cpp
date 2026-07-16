@@ -1,5 +1,6 @@
 #include "game/combat_system.h"
 
+#include "game/angles.h"
 #include "game/audio.h"
 #include "game/camera_shake.h"
 #include "game/components.h"
@@ -14,17 +15,6 @@
 
 namespace naval {
     namespace {
-        // Wrap an angle into [-pi, pi].
-        float NormalizeAngle(float a) {
-            while (a > b2_pi) {
-                a -= 2.0f * b2_pi;
-            }
-            while (a < -b2_pi) {
-                a += 2.0f * b2_pi;
-            }
-            return a;
-        }
-
         // A uniformly random point within a disc of the given radius centred on
         // the origin. The sqrt on the radius keeps the distribution even across
         // the area rather than clustering toward the centre.
@@ -63,7 +53,7 @@ namespace naval {
             if (len < 1e-6f) {
                 return true;
             }
-            return std::abs(NormalizeAngle(std::atan2(d.y, d.x) - arcCentre)) <= arcHalfAngle;
+            return std::abs(WrapPi(std::atan2(d.y, d.x) - arcCentre)) <= arcHalfAngle;
         }
 
         // True if the circle (centre `p`, radius `r`) overlaps the oriented hull
@@ -315,7 +305,7 @@ namespace naval {
                 // the weapon's arc: clamp the shot's bearing to the arc so a target
                 // straddling the edge is still only shot at within it.
                 b2Vec2 const toFire = firePoint - mountPos;
-                float const aimDelta = NormalizeAngle(std::atan2(toFire.y, toFire.x) - arcCentre);
+                float const aimDelta = WrapPi(std::atan2(toFire.y, toFire.x) - arcCentre);
                 float const shotBearing =
                     arcCentre + std::clamp(aimDelta, -weapon.arcHalfAngle, weapon.arcHalfAngle);
                 b2Vec2 const aim{ std::cos(shotBearing), std::sin(shotBearing) };
