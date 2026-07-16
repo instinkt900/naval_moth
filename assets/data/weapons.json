@@ -5,7 +5,7 @@
         "damage": 1.0,
         "cooldown": 0.1,
         "range": 130.0,
-        "arcDegrees": 36.0,
+        "arcDegrees": 72.0,
         "spreadDegrees": 3.0,
         "fireSound": "gun_light",
         "fireShakeM": 0.25
@@ -16,7 +16,7 @@
         "damage": 15.0,
         "cooldown": 2.0,
         "range": 300.0,
-        "arcDegrees": 65.0,
+        "arcDegrees": 130.0,
         "spreadDegrees": 3.0,
         "fireSound": "gun_heavy",
         "fireShakeM": 0.8
@@ -27,7 +27,7 @@
         "damage": 5.0,
         "cooldown": 2.0,
         "range": 15.0,
-        "arcDegrees": 35.0,
+        "arcDegrees": 70.0,
         "spreadDegrees": 5.0,
         "fireSound": "cannon",
         "fireShakeM": 0.5
@@ -38,7 +38,7 @@
         "damage": 20.0,
         "cooldown": 15.0,
         "range": 3800.0,
-        "arcDegrees": 15.0,
+        "arcDegrees": 30.0,
         "spreadDegrees": 0.5,
         "fireSound": "gun_heavy",
         "fireShakeM": 5.0
@@ -49,7 +49,7 @@
         "damage": 5.0,
         "cooldown": 0.25,
         "range": 1800.0,
-        "arcDegrees": 90.0,
+        "arcDegrees": 180.0,
         "spreadDegrees": 1.0,
         "fireSound": "gun_medium",
         "fireShakeM": 0.4

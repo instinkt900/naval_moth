@@ -47,6 +47,11 @@ namespace naval::defs {
     // A weapon type. Fires its projectile at any targetable inside its arc and
     // range, respecting cooldown. The firing arc's centre bearing comes from the
     // hull mount; arcHalfAngle is the half-width to either side of it.
+    //
+    // The JSON authors the arc's *full* width, since that is the thing a reader
+    // pictures — a 90 degree gun sweeps 90 degrees of sea, not 180. It is halved
+    // on load rather than in the systems because every consumer of it (targeting,
+    // aim clamping, aggro's turn cost, the drawn arc) wants the half-width.
     struct Weapon {
         std::string projectile;      // id into the projectile table (its visuals)
         float muzzleVelocity = 0.0f; // m/s the shot leaves the barrel at

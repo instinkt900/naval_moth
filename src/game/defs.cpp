@@ -94,7 +94,9 @@ namespace naval::defs {
             w.damage = j.at("damage").get<float>();
             w.cooldown = j.at("cooldown").get<float>();
             w.range = j.at("range").get<float>();
-            w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad;
+            // Authored as the arc's full width, halved here because the runtime
+            // works in a half-width to either side of the mount bearing.
+            w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad * 0.5f;
             w.spread = j.value("spreadDegrees", 0.0f) * moth_ui::kDegToRad;
             w.fireSound = j.value("fireSound", std::string{});
             w.fireShakeM = j.value("fireShakeM", 0.0f);
