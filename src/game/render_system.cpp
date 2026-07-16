@@ -264,6 +264,14 @@ namespace naval {
             graphics.DrawLineF(originPx, edge(start));               // near radial edge
             DrawSweep(graphics, originPx, rangePx, start, arcAngle); // the outer sweep between them
             graphics.DrawLineF(originPx, edge(start + arcAngle));    // far radial edge
+
+            // The barrel: a radius out to the arc's edge showing where the gun
+            // is currently trained as it slews within the fixed arc toward its
+            // mark (see combat_system). The arc's own hue, but far fainter — a
+            // thin hint of the lay, not a second bright edge competing with the
+            // arc it sits inside.
+            graphics.SetColor(moth_ui::Color{ arcColor.r, arcColor.g, arcColor.b, arcColor.a * 0.2f });
+            graphics.DrawLineF(originPx, edge(shipAngle + weapon.aimBearing));
         }
 
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);

@@ -89,11 +89,16 @@ namespace naval::defs {
         nlohmann::json const weaponsJson = ReadJson(dir / "weapons.json");
         for (auto const& [id, j] : weaponsJson.items()) {
             Weapon w;
+            w.name = j.value("name", id);
             w.projectile = j.at("projectile").get<std::string>();
             w.muzzleVelocity = j.at("muzzleVelocity").get<float>();
             w.damage = j.at("damage").get<float>();
             w.cooldown = j.at("cooldown").get<float>();
             w.range = j.at("range").get<float>();
+            // Degrees/second as authored; radians/second at runtime. Optional —
+            // a weapon that omits it (or gives <= 0) trains instantly, the way
+            // guns behaved before barrels had a turn rate.
+            w.turnRate = j.value("turnRateDegrees", 0.0f) * moth_ui::kDegToRad;
             // Authored as the arc's full width, halved here because the runtime
             // works in a half-width to either side of the mount bearing.
             w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad * 0.5f;
@@ -107,6 +112,7 @@ namespace naval::defs {
         nlohmann::json const hullsJson = ReadJson(dir / "hulls.json");
         for (auto const& [id, j] : hullsJson.items()) {
             Hull h;
+            h.name = j.value("name", id);
             auto const& jp = j.at("propulsion");
             h.propulsion.maxThrust = jp.at("maxThrust").get<float>();
             h.propulsion.maxSpeed = jp.at("maxSpeedKnots").get<float>() * kKnotsToMetersPerSecond;

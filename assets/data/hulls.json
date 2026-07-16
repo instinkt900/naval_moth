@@ -1,5 +1,6 @@
 {
     "scout": {
+        "name": "Scout",
         "propulsion": {
             "maxThrust": 400.0,
             "maxSpeedKnots": 36.0,
@@ -16,48 +17,49 @@
         ]
     },
     "frigate": {
+        "name": "Anzac-class Frigate",
         "propulsion": {
-            "maxThrust": 2000.0,
-            "maxSpeedKnots": 30.0,
-            "turnRate": 0.06,
+            "maxThrust": 2500.0,
+            "maxSpeedKnots": 27.0,
+            "turnRate": 0.08,
             "powerDistance": 100.0,
             "rudderRate": 0.3
         },
-        "halfLengthM": 68.0,
-        "halfBeamM": 7.0,
+        "halfLengthM": 59.0,
+        "halfBeamM": 7.4,
         "foreShoulder": [0.8,0.6],
         "aftShoulder": [0.95,0.8],
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "mark-38", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 6.0 },
-            { "weapon": "mark-38", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -6.0 },
-            { "weapon": "oto-76", "bearingDegrees": 0.0, "forwardM": 34.0, "lateralM": 0.0 }
+            { "weapon": "mk45_mod2", "bearingDegrees": 0.0, "forwardM": 38.0, "lateralM": 0.0 },
+            { "weapon": "m2_browning", "bearingDegrees": 90.0, "forwardM": 6.0, "lateralM": 6.5 },
+            { "weapon": "m2_browning", "bearingDegrees": -90.0, "forwardM": 6.0, "lateralM": -6.5 },
+            { "weapon": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -32.0, "lateralM": 0.0 }
         ]
     },
     "destroyer": {
+        "name": "Hobart-class Destroyer",
         "propulsion": {
-            "maxThrust": 6000.0,
-            "maxSpeedKnots": 32.0,
-            "turnRate": 0.07,
+            "maxThrust": 7000.0,
+            "maxSpeedKnots": 28.0,
+            "turnRate": 0.06,
             "powerDistance": 100.0,
             "rudderRate": 0.3
         },
-        "halfLengthM": 75.0,
-        "halfBeamM": 10.0,
+        "halfLengthM": 73.6,
+        "halfBeamM": 9.3,
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "mark-7", "bearingDegrees": -90.0, "forwardM": 15.0, "lateralM": -5.0 },
-            { "weapon": "mark-7", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -5.0 },
-            { "weapon": "mark-7", "bearingDegrees": -90.0, "forwardM": -15.0, "lateralM": -5.0 },
-            { "weapon": "mark-7", "bearingDegrees": 90.0, "forwardM": 15.0, "lateralM": 5.0 },
-            { "weapon": "mark-7", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 5.0 },
-            { "weapon": "mark-7", "bearingDegrees": 90.0, "forwardM": -15.0, "lateralM": 5.0 },
-            { "weapon": "mark-12", "bearingDegrees": 0.0, "forwardM": 20.0, "lateralM": 0.0 }
+            { "weapon": "mk45", "bearingDegrees": 0.0, "forwardM": 48.0, "lateralM": 0.0 },
+            { "weapon": "typhoon_25", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 7.0 },
+            { "weapon": "typhoon_25", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -7.0 },
+            { "weapon": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -40.0, "lateralM": 0.0 }
         ]
     },
     "corsair": {
+        "name": "Corsair",
         "propulsion": {
             "maxThrust": 800.0,
             "maxSpeedKnots": 20.0,
@@ -79,6 +81,7 @@
         ]
     },
     "hulk": {
+        "name": "Hulk",
         "propulsion": {
             "maxThrust": 0.0,
             "maxSpeedKnots": 0.0,

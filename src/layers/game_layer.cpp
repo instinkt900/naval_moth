@@ -530,19 +530,29 @@ namespace naval {
             // fire a gun laid on a contact of its own says so instead of
             // reporting "no bearing" on the strength of the designated one. A
             // switched-out gun reads "disabled" ahead of any of that, since it
-            // is holding whatever it can reach.
+            // is holding whatever it can reach. When it does bear, the barrel is
+            // either still slewing onto the mark or acquired and on it — the
+            // distinction the turn rate makes visible.
             bool const laid = weapon.target != entt::null && m_registry.valid(weapon.target);
+            bool const shooting = order.firing || order.freeFire;
+
             char const* status = "no bearing";
             if (!weapon.enabled) {
                 status = "disabled";
-            } else if (weapon.cooldownRemaining > 0.0f) {
-                status = "reloading";
+            } else if (laid && !weapon.acquired) {
+                status = "slewing";
             } else if (laid) {
-                status = (order.firing || order.freeFire) ? "firing" : "bears, holding";
+                status = shooting ? "firing" : "acquired, holding";
             }
+
+            // The reload clock rides alongside the lay state whenever the gun is
+            // cooling, firing or not — so an auto-firing battery still shows each
+            // gun training and reloading rather than a bare "firing". A gun
+            // ordered to fire but still slewing reads "slewing", since with the
+            // trigger gated on acquisition it is holding its rounds, not firing.
             if (weapon.enabled && weapon.cooldownRemaining > 0.0f) {
                 ImGui::TextUnformatted(
-                    fmt::format("{} {:.1f}s", status, weapon.cooldownRemaining).c_str());
+                    fmt::format("{}  reloading {:.1f}s", status, weapon.cooldownRemaining).c_str());
             } else {
                 ImGui::TextUnformatted(status);
             }

@@ -313,6 +313,8 @@ namespace naval {
                 }
                 weapon.target = target;
                 if (target == entt::null) {
+                    // Nothing to acquire; the barrel holds its lay (see below).
+                    weapon.acquired = false;
                     continue;
                 }
                 b2Body* targetBody = registry.get<Physics>(target).body;
@@ -337,6 +339,34 @@ namespace naval {
                 weapon.aimWorld = targetPos + (flightTime * targetVel);
                 weapon.spreadRadiusM = (weapon.aimWorld - mountPos).Length() * std::tan(weapon.spread);
 
+                // Train the barrel toward the aim point, bounded by the gun's
+                // turn rate and clamped to its arc. Worked in bow-relative
+                // bearings so the lay rides the hull's own swing and never
+                // leaves the arc; a rate of zero or less trains in one step. This
+                // runs before the fire gates below, alongside the aim solution, so
+                // a gun that is merely holding — or switched out — still slews onto
+                // its mark. With no target the loop has already continued, so the
+                // barrel simply holds its last lay: a persistent aim, not one
+                // that recentres.
+                float const aimWorldBearing = std::atan2(weapon.aimWorld.y - mountPos.y,
+                                                         weapon.aimWorld.x - mountPos.x);
+                float const desiredAim =
+                    weapon.bearing + std::clamp(WrapPi(aimWorldBearing - arcCentre),
+                                                -weapon.arcHalfAngle, weapon.arcHalfAngle);
+                float const trainDelta = WrapPi(desiredAim - weapon.aimBearing);
+                float const trainStep = weapon.turnRate * dt;
+                bool const snap = weapon.turnRate <= 0.0f || std::abs(trainDelta) <= trainStep;
+                weapon.aimBearing += snap ? trainDelta : std::copysign(trainStep, trainDelta);
+
+                // Acquired once the lay sits within a hair of the aim: snapping
+                // onto it this tick, or holding within tolerance of a moving
+                // solution. A gun that cannot keep pace with a fast crosser reads
+                // as slewing, which is the truth of it. Gates standing fire below
+                // as well as the readout — a slewing gun holds its rounds.
+                constexpr float kAcquiredToleranceRad = 0.017f; // ~1 degree
+                weapon.acquired =
+                    std::abs(WrapPi(desiredAim - weapon.aimBearing)) <= kAcquiredToleranceRad;
+
                 // Everything above happens whether or not the ship is shooting,
                 // so a held gun still tracks its mark and shows a live aim
                 // solution. Only the shot itself waits on the order.
@@ -347,21 +377,33 @@ namespace naval {
                 if (!weapon.enabled) {
                     continue;
                 }
-                // Three ways to be allowed it, any one of which is enough: the
-                // standing order, this tick's salvo, or weapons free. This is
-                // only the trigger — what the gun is laid on was settled above,
-                // and free fire is what widened that, not this.
-                if (!order.firing && !salvo && !order.freeFire) {
+                // The trigger. Standing fire — the fire order or weapons-free —
+                // holds until the barrel has trained onto the mark, so a slewing
+                // gun keeps its rounds rather than throwing them wide of a lead
+                // it has not reached. A salvo is exempt: it is the deliberate
+                // "fire now", and spends its one round whether or not the gun has
+                // settled. What the gun is laid on, and how far it has trained,
+                // were both settled above; this only decides whether to shoot.
+                bool const standingFire = (order.firing || order.freeFire) && weapon.acquired;
+                if (!salvo && !standingFire) {
                     continue;
                 }
                 if (weapon.cooldownRemaining > 0.0f) {
                     continue;
                 }
 
-                // Scatter: send the shot to a uniformly random point within the
-                // spread disc over the aim point, so each shot varies in both
-                // bearing and depth together and the scatter widens with range.
-                b2Vec2 const firePoint = weapon.aimWorld + RandomInDisc(weapon.spreadRadiusM);
+                // The shot leaves along the barrel, not straight at the aim
+                // point: while the gun is still training the two diverge, and
+                // that lag is the whole point of the turn rate. Take where the
+                // barrel points at the aim's range as the shot's centre, then
+                // scatter the spread disc around it — so a laid gun matches the
+                // old behaviour and a slewing one throws wide of the lead in the
+                // direction it has yet to cover.
+                float const barrelBearing = shipAngle + weapon.aimBearing;
+                float const aimRange = (weapon.aimWorld - mountPos).Length();
+                b2Vec2 const barrelPoint =
+                    mountPos + (aimRange * b2Vec2{ std::cos(barrelBearing), std::sin(barrelBearing) });
+                b2Vec2 const firePoint = barrelPoint + RandomInDisc(weapon.spreadRadiusM);
 
                 // Fire from the mount toward the scattered point, but never past
                 // the weapon's arc: clamp the shot's bearing to the arc so a target

@@ -53,11 +53,13 @@ namespace naval::defs {
     // on load rather than in the systems because every consumer of it (targeting,
     // aim clamping, aggro's turn cost, the drawn arc) wants the half-width.
     struct Weapon {
+        std::string name;            // display name shown in game; defaults to the id if unspecified
         std::string projectile;      // id into the projectile table (its visuals)
         float muzzleVelocity = 0.0f; // m/s the shot leaves the barrel at
         float damage = 0.0f;         // hit points removed from a hull it strikes
         float cooldown = 0.0f;    // seconds between shots
         float range = 0.0f;       // metres
+        float turnRate = 0.0f;    // radians/second the barrel trains at within its arc (loaded from turnRateDegrees); <= 0 trains instantly
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees)
         float spread = 0.0f;      // radians (loaded from spreadDegrees); half-angle of the spread disc over the target
         std::string fireSound;    // id into the sound table; empty = silent
@@ -84,6 +86,7 @@ namespace naval::defs {
 
     // A ship class: how it moves, how it draws, and what it carries.
     struct Hull {
+        std::string name; // display name shown in game; defaults to the id if unspecified
         Propulsion propulsion;
         float halfLengthM = 0.0f;
         float halfBeamM = 0.0f;

@@ -37,7 +37,7 @@ namespace naval {
         registry.emplace<Renderable>(entity, Renderable{ hull.color, hull.halfLengthM, hull.halfBeamM,
                                                          hull.foreShoulder, hull.foreShoulderBeam,
                                                          hull.aftShoulder, hull.aftShoulderBeam });
-        registry.emplace<Identity>(entity, Identity{ hullId });
+        registry.emplace<Identity>(entity, Identity{ hull.name });
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
         registry.emplace<Helm>(entity, Helm{});
         registry.emplace<Wake>(entity, Wake{});
@@ -54,10 +54,13 @@ namespace naval {
             defs::Weapon const& weaponDef = db.GetWeapon(mount.weapon);
             defs::Projectile const& projectileDef = db.GetProjectile(weaponDef.projectile);
             Weapon weapon;
-            weapon.name = mount.weapon;
+            weapon.name = weaponDef.name;
             weapon.bearing = mount.bearing;
+            // The barrel starts centred in its arc, i.e. laid along the mount.
+            weapon.aimBearing = mount.bearing;
             weapon.mountOffset = b2Vec2{ mount.forwardM, mount.lateralM };
             weapon.arcHalfAngle = weaponDef.arcHalfAngle;
+            weapon.turnRate = weaponDef.turnRate;
             weapon.range = weaponDef.range;
             weapon.spread = weaponDef.spread;
             weapon.muzzleVelocity = weaponDef.muzzleVelocity;

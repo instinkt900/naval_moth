@@ -154,6 +154,18 @@ both its reach and, per shot, the fuze. Missiles and torpedoes follow later, wit
 homing/guidance behaviour — and a self-contained run distance independent of the
 launcher — of their own.
 
+Once missiles and torpedoes exist as threats in their own right — objects that
+travel through the world and take time to arrive, rather than instant hits — point
+defence becomes possible: a CIWS-class weapon should be able to engage *them*, not
+only ships. Such a mount would lay onto an inbound missile or torpedo inside its
+arc and try to destroy it before it strikes, so close-in guns answer standoff
+weapons rather than being just another short-ranged anti-ship battery. That makes
+the range band a real attack/defence exchange — reach out with the main guns and
+missiles, hold off what comes back with the CIWS. It also asks two things of the
+weapons system that anti-ship fire does not: a weapon needs to know which *kinds*
+of thing it may target (hulls, projectiles, or both), and targeting has to consider
+in-flight ordnance as candidates alongside ships.
+
 ## Sound
 
 Sound is there to give weight to things that already happen — a gun firing, a shell

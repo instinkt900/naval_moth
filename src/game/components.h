@@ -117,13 +117,14 @@ namespace naval {
     // bow, +y toward starboard); it is the origin for aiming, firing, and the
     // drawn arc.
     struct Weapon {
-        std::string name;                   // weapon def id, for display
+        std::string name;                   // weapon display name (the def's name, or its id), for the readout
         float bearing = 0.0f;               // rad, mount direction relative to bow
         b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
         float arcHalfAngle = 0.0f;          // rad, half-width of the firing arc
         float range = 0.0f;                 // m, engagement range; also how far its shots travel
         float spread = 0.0f;                // rad, half-angle of the spread disc over the target (radius = range * tan)
         float cooldown = 0.0f;              // s between shots
+        float turnRate = 0.0f;              // rad/s the barrel trains at within its arc; <= 0 trains instantly
 
         // Shot stats, copied from the database so firing needs no lookup. Speed
         // and damage are the weapon's; the draw radius, colour and what it does
@@ -180,6 +181,23 @@ namespace naval {
         // draw previews it. Meaningful only while `target` is valid.
         b2Vec2 aimWorld{ 0.0f, 0.0f };
         float spreadRadiusM = 0.0f;
+
+        // The barrel's current lay, as a bearing relative to the bow — so it
+        // rides the hull's heading and stays inside the arc as the ship turns
+        // (world bearing is bodyAngle + aimBearing). It trains toward the target
+        // at turnRate each tick, clamped to the arc, and simply holds on any
+        // tick with no target: a persistent aim, not one that recentres. The
+        // shot leaves along it, so a gun still slewing onto a mark throws wide of
+        // the lead until it catches up. Seeded to the mount bearing at spawn, so
+        // the gun starts centred in its arc.
+        float aimBearing = 0.0f;
+
+        // True once the barrel has trained onto the aim solution — within about
+        // a degree of it — rather than still slewing toward it. Refreshed each
+        // tick a target is held and cleared when there is none. Drives the
+        // Target window's per-gun readout only; the shot never waits on it (a
+        // gun still slewing fires along the barrel and simply throws wide).
+        bool acquired = false;
     };
 
     // Every weapon a ship carries. A vector (rather than one component per
@@ -250,8 +268,8 @@ namespace naval {
         Faction faction = Faction::Player;
     };
 
-    // A human-readable class name (the hull id), for labelling a contact in the
-    // controls readout.
+    // A human-readable class name (the hull's display name, or its id if the
+    // hull gives none), for labelling a contact in the controls readout.
     struct Identity {
         std::string name;
     };
