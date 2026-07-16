@@ -20,7 +20,7 @@
         "pitchVariance": 0.12
     },
     "impact_small": {
-        "file": "audio/impact_small.wav",
+        "file": "audio/Large-explosion-or-cannon-in-a-close-perspective-450.wav",
         "volume": 0.6,
         "pitchVariance": 0.15
     },
@@ -30,7 +30,7 @@
         "pitchVariance": 0.1
     },
     "splash_small": {
-        "file": "audio/splash_small.wav",
+        "file": "audio/Swimming-pool-dive-in-with-a-splash-414.wav",
         "volume": 0.35,
         "pitchVariance": 0.2
     },

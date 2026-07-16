@@ -19,7 +19,7 @@
         "propulsion": {
             "maxThrust": 2000.0,
             "maxSpeedKnots": 30.0,
-            "turnRate": 0.04,
+            "turnRate": 0.06,
             "powerDistance": 100.0,
             "rudderRate": 0.3
         },
@@ -39,9 +39,9 @@
         "propulsion": {
             "maxThrust": 6000.0,
             "maxSpeedKnots": 32.0,
-            "turnRate": 0.08,
+            "turnRate": 0.07,
             "powerDistance": 100.0,
-            "rudderRate": 0.6
+            "rudderRate": 0.3
         },
         "halfLengthM": 75.0,
         "halfBeamM": 10.0,
