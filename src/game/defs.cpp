@@ -55,11 +55,32 @@ namespace naval::defs {
         // Each document is bound to a named local before iterating .items():
         // the iteration proxy holds a pointer into the json, and a temporary
         // returned inline would be destroyed before the loop body runs.
+
+        // Sound file paths are authored relative to the assets root rather than
+        // to this data directory, so `"audio/gun.wav"` reads naturally and the
+        // audio sits beside the data rather than among it.
+        std::filesystem::path const assetsRoot = dir.parent_path();
+        nlohmann::json const soundsJson = ReadJson(dir / "sounds.json");
+        for (auto const& [id, j] : soundsJson.items()) {
+            Sound s;
+            s.file = assetsRoot / j.at("file").get<std::string>();
+            s.volume = j.value("volume", 1.0f);
+            s.pitchVariance = j.value("pitchVariance", 0.0f);
+            Require(s.volume >= 0.0f, "sound '" + id + "' volume must not be negative");
+            Require(s.pitchVariance >= 0.0f && s.pitchVariance < 1.0f,
+                    "sound '" + id + "' pitchVariance must be in [0,1)");
+            db.m_sounds.emplace(id, s);
+        }
+
         nlohmann::json const projectilesJson = ReadJson(dir / "projectiles.json");
         for (auto const& [id, j] : projectilesJson.items()) {
             Projectile p;
             p.radiusM = j.at("radiusM").get<float>();
             p.color = ParseColor(j.at("color"));
+            // Sounds are optional throughout: an unauthored one is a deliberate
+            // silence, not an omission to complain about.
+            p.impactSound = j.value("impactSound", std::string{});
+            p.splashSound = j.value("splashSound", std::string{});
             db.m_projectiles.emplace(id, p);
         }
 
@@ -73,6 +94,7 @@ namespace naval::defs {
             w.range = j.at("range").get<float>();
             w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad;
             w.spread = j.value("spreadDegrees", 0.0f) * moth_ui::kDegToRad;
+            w.fireSound = j.value("fireSound", std::string{});
             db.m_weapons.emplace(id, w);
         }
 
@@ -107,6 +129,7 @@ namespace naval::defs {
             h.angularDamping = j.at("angularDamping").get<float>();
             h.health = j.value("health", 0.0f);
             h.color = ParseColor(j.at("color"));
+            h.explosionSound = j.value("explosionSound", std::string{});
             for (auto const& jm : j.at("mounts")) {
                 Mount m;
                 m.weapon = jm.at("weapon").get<std::string>();
@@ -129,12 +152,25 @@ namespace naval::defs {
         nlohmann::json const playerJson = ReadJson(dir / "player.json");
         db.m_player.hull = playerJson.at("hull").get<std::string>();
 
-        // Validate every cross-reference so spawning can trust its lookups.
+        // Validate every cross-reference so spawning can trust its lookups. A
+        // sound reference is checked like the rest, except that an empty one is
+        // allowed: it means the content deliberately makes no sound there.
+        auto requireSound = [&db](std::string const& sound, std::string const& owner) {
+            Require(sound.empty() || db.m_sounds.count(sound) != 0,
+                    owner + " references unknown sound '" + sound + "'");
+        };
+
         for (auto const& [id, weapon] : db.m_weapons) {
             Require(db.m_projectiles.count(weapon.projectile) != 0,
                     "weapon '" + id + "' references unknown projectile '" + weapon.projectile + "'");
+            requireSound(weapon.fireSound, "weapon '" + id + "'");
+        }
+        for (auto const& [id, projectile] : db.m_projectiles) {
+            requireSound(projectile.impactSound, "projectile '" + id + "'");
+            requireSound(projectile.splashSound, "projectile '" + id + "'");
         }
         for (auto const& [id, hull] : db.m_hulls) {
+            requireSound(hull.explosionSound, "hull '" + id + "'");
             for (auto const& mount : hull.mounts) {
                 Require(db.m_weapons.count(mount.weapon) != 0,
                         "hull '" + id + "' mounts unknown weapon '" + mount.weapon + "'");

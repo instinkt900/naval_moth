@@ -45,7 +45,7 @@ GLFW + Vulkan.
 `main.cpp` (picks a platform backend, installs an spdlog-backed `moth_ui::ILogger`) →
 `NavalApplication` (a `moth_graphics::platform::Application`) → **`GameLayer`**, which owns
 essentially the whole game: the `b2World`, the `entt::registry`, the `defs::Database`, the
-`Terrain`, and the `Camera`. There is no separate world/sim class — `GameLayer::Update()`
+`Terrain`, the `Camera`, and the `Audio`. There is no separate world/sim class — `GameLayer::Update()`
 *is* the simulation loop and `GameLayer::Draw()` *is* the frame. Systems are free functions
 over the registry (`src/game/*_system.h`), not classes; the layer calls them in order.
 
@@ -61,6 +61,14 @@ when adding systems, and comment the ordering constraint when you do:
 - `UpdateWake` after the step — marks drop at the hull's settled position.
 - `UpdateSinking` after the step — it destroys Box2D bodies, which must not happen inside
   the world update.
+- `Audio::SetListener` after the camera pan but before any system that fires — it takes the
+  whole `Camera`, since volume and pan both depend on the zoom as well as the centre. Gain and
+  pan are baked in when a sound starts and never updated while it plays.
+- `Audio::Update` last — it reclaims the voices of finished sounds, so it must run after
+  everything that took one this tick.
+
+`Audio::Load` also has to happen before the first spawn (it's in the `GameLayer` constructor,
+after `defs::Database` is up), because a ship resolves its sound handles as it is built.
 
 ### Units: metres vs pixels
 
@@ -74,7 +82,7 @@ read it; nothing keeps a duplicate.
 
 ### Data-driven content
 
-`assets/data/{hulls,weapons,projectiles,enemies,player}.json` load once at startup into
+`assets/data/{hulls,weapons,projectiles,enemies,player,sounds}.json` load once at startup into
 `defs::Database`, which validates every cross-reference by id and throws on a dangling one —
 so bad content fails loudly at startup, not at spawn. Definitions are **read-only**; a spawned
 entity's mutable state (health, cooldowns, position) lives in its components and never writes
@@ -100,6 +108,27 @@ JSON authoring uses friendlier units than the runtime structs (`maxSpeedKnots`, 
   debug sliders, and the ring renderer, so all three stay in step while tuning at runtime.
 - **Weapons live in an `Armament` vector**, not one component per weapon, because an entity holds
   at most one component of a given type.
+- **miniaudio is vendored**, not a Conan package (`external/miniaudio`, a single public-domain
+  header). It has no dependencies, so vendoring sidesteps the Linux system-package rule the rest
+  of the audio/display stack is bound by, and it owns its own device thread — so audio works the
+  same under SDL and under GLFW/Vulkan. `src/game/miniaudio_impl.cpp` exists only to hold its
+  implementation and is the one file built with warnings off; the `MA_NO_*` switches trimming it
+  are set target-wide in CMake so every TU agrees on what's in the header.
+- **Sound ids resolve to `int` handles at spawn** (`kNoSound` = silent), not looked up by string
+  when a gun fires — the same trade `Weapon` already makes for its projectile's stats. A shot
+  carries its own impact/splash handles because the gun that fired it may have sunk by the time
+  it lands.
+- **Volume is distance × zoom, kept as two separate curves** (`audio.cpp`). Distance fades over
+  metres of water; zoom is a master gain interpolated against `kMinZoom`/`kMaxZoom` (in
+  `camera.h` — shared with the wheel handler for exactly this reason) on a **log** scale, since
+  the wheel scales zoom multiplicatively. Folding zoom into distance as a listener altitude was
+  tried and reverted: it ties the zoom response to `kSilenceM` and flattens it to ~1 dB across
+  the near half of the zoom range. Panning is miniaudio's panner, which runs after its
+  spatialiser and so costs nothing that `MA_SOUND_FLAG_NO_SPATIALIZATION` turns off.
+- **Missing audio degrades, it doesn't throw** — deliberately unlike the rest of `defs::Database`.
+  An *unnamed* sound is silent by design; a *named but dangling id* still throws like any other
+  reference; a named id whose **file** won't load only warns and goes silent, since `Database`
+  never opens the file — `Audio::Load` does.
 
 ## Code style
 

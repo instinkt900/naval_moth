@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/audio.h"
 #include "game/camera.h"
 #include "game/defs.h"
 #include "game/terrain.h"
@@ -64,6 +65,9 @@ namespace naval {
         Terrain m_terrain;
         entt::registry m_registry;
         defs::Database m_db;
+        // Declared after m_db: the constructor loads the sound bank from it
+        // before anything spawns, since spawning resolves sound handles here.
+        Audio m_audio;
         entt::entity m_ship;
     };
 }

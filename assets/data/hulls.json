@@ -72,6 +72,7 @@
         "angularDamping": 3.0,
         "health": 80.0,
         "color": [0.80, 0.40, 0.35, 1.0],
+        "explosionSound": "explosion",
         "mounts": [
             { "weapon": "auto_gun", "bearingDegrees": 0.0, "forwardM": 18.0, "lateralM": 0.0 }
         ]
@@ -89,6 +90,7 @@
         "angularDamping": 5.0,
         "health": 100.0,
         "color": [0.80, 0.40, 0.35, 1.0],
+        "explosionSound": "explosion",
         "mounts": [
         ]
     }

@@ -1,13 +1,14 @@
 #include "game/ship_factory.h"
 
+#include "game/audio.h"
 #include "game/components.h"
 #include "game/defs.h"
 #include "game/hull_shape.h"
 
 namespace naval {
     entt::entity SpawnHull(entt::registry& registry, b2World& world,
-                           defs::Database const& db, std::string const& hullId,
-                           b2Vec2 position, Faction faction) {
+                           defs::Database const& db, Audio const& audio,
+                           std::string const& hullId, b2Vec2 position, Faction faction) {
         defs::Hull const& hull = db.GetHull(hullId);
         entt::entity entity = registry.create();
 
@@ -41,6 +42,7 @@ namespace naval {
         registry.emplace<Helm>(entity, Helm{});
         registry.emplace<Wake>(entity, Wake{});
         registry.emplace<Combatant>(entity, Combatant{ faction });
+        registry.emplace<Sounds>(entity, Sounds{ audio.Find(hull.explosionSound) });
 
         Armament armament;
         for (auto const& mount : hull.mounts) {
@@ -58,6 +60,9 @@ namespace naval {
             weapon.cooldown = weaponDef.cooldown;
             weapon.projectileRadiusM = projectileDef.radiusM;
             weapon.projectileColor = projectileDef.color;
+            weapon.projectileImpactSound = audio.Find(projectileDef.impactSound);
+            weapon.projectileSplashSound = audio.Find(projectileDef.splashSound);
+            weapon.fireSound = audio.Find(weaponDef.fireSound);
             armament.weapons.push_back(weapon);
         }
         registry.emplace<Armament>(entity, std::move(armament));
@@ -66,10 +71,10 @@ namespace naval {
     }
 
     entt::entity SpawnEnemy(entt::registry& registry, b2World& world,
-                            defs::Database const& db, std::string const& enemyId,
-                            b2Vec2 position) {
+                            defs::Database const& db, Audio const& audio,
+                            std::string const& enemyId, b2Vec2 position) {
         defs::Enemy const& enemy = db.GetEnemy(enemyId);
-        entt::entity entity = SpawnHull(registry, world, db, enemy.hull, position, Faction::Enemy);
+        entt::entity entity = SpawnHull(registry, world, db, audio, enemy.hull, position, Faction::Enemy);
         float const hp = db.GetHull(enemy.hull).health;
         registry.emplace<Health>(entity, Health{ hp, hp });
         // Enemies patrol on their own until a foe comes within aggro range, at

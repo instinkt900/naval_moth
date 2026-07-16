@@ -114,6 +114,38 @@ both its reach and, per shot, the fuze. Missiles and torpedoes follow later, wit
 homing/guidance behaviour — and a self-contained run distance independent of the
 launcher — of their own.
 
+## Sound
+
+Sound is there to give weight to things that already happen — a gun firing, a shell
+landing, a hull going up — not to be a system in its own right. It stays deliberately
+shallow: no doppler, no true 3D panning, no filters, no music. A sound is named in
+data by whatever makes it, and plays where that thing happened.
+
+Three things shape a sound at the moment it plays, all of them fixed as it starts
+rather than tracked while it runs.
+
+**Distance** across the water from the camera sets its volume, fading to nothing well
+out from the view, so a battle across the map doesn't shout as loudly as your own guns.
+**Zoom** scales it again: a sound plays as authored only with the camera right down on
+the action, and pulling back to survey the map quietens everything — including whatever
+sits dead centre — down to a floor that keeps a distant battle audible rather than
+silent. The two are separate knobs because they answer different questions, and because
+zoom is a multiplier the wheel moves in steps: it earns a response measured against the
+zoom limits, not against a distance in metres. **Pitch** is varied slightly per playing,
+which is what stops a rapid-firing gun from sounding like a loop of one sample.
+
+Sounds are also **panned** left or right by where they sit across the view, which is a
+stereo placement and not the beginning of spatialisation — no doppler, no distance
+filtering, no height. It tracks the picture: a gun at the edge of the screen is at the
+edge of the stereo image whatever the zoom.
+
+Volume and pitch variance are authored per sound, since how loud a recording is and how
+much it can be bent are properties of the recording.
+
+Missing audio is not an error. A weapon that names no sound is silently quiet, which
+is how content stays playable while sounds are still being found for it; only a
+*named* sound that isn't there is worth complaining about.
+
 ## Data & content
 
 Ships, weapons, projectiles, and enemies are defined as data, not code. Each is a
@@ -123,7 +155,7 @@ factory rather than from hard-coded constants. This keeps the composable-ships
 pillar honest — a loadout is just a different set of references — and lets content
 and balance change without a recompile.
 
-Five definition sets, cross-referenced by id:
+Six definition sets, cross-referenced by id:
 
 - **Hulls** — structural identity: propulsion handling, hull dimensions and render
   spec, base health, and the weapon mount points a hull carries.
@@ -139,6 +171,9 @@ Five definition sets, cross-referenced by id:
   game spawns as an opponent.
 - **Player** — the player's own ship: a hull (and later a chosen loadout). A single
   definition rather than a table, since there is only ever one player.
+- **Sounds** — a named sound effect: the audio file, how loud it plays, and how much
+  its pitch varies from one playing to the next. Named by the things that make the
+  noise rather than owned by them, so several weapons can share one report.
 
 Content is authored with real warships and their armament in mind — hull
 dimensions, speeds, and weapon fits should read as plausible for the vessel

@@ -1,5 +1,6 @@
 #include "game/combat_system.h"
 
+#include "game/audio.h"
 #include "game/components.h"
 
 #include <box2d/box2d.h>
@@ -185,7 +186,13 @@ namespace naval {
         // from combat so nothing targets it or fires from it, cut its helm so the
         // wreck coasts to a stop under drag, and tag it Sinking for the sinking
         // system and renderer to carry through.
-        void BeginSinking(entt::registry& registry, entt::entity hull) {
+        void BeginSinking(entt::registry& registry, Audio& audio, entt::entity hull) {
+            // The hull goes up as it dies. Heard here, at the moment it is
+            // destroyed, rather than in the sinking system, which would replay
+            // it every tick of the wreck's long slide under.
+            if (auto const* sounds = registry.try_get<Sounds>(hull); sounds != nullptr) {
+                audio.Play(sounds->explosion, registry.get<Physics>(hull).body->GetPosition());
+            }
             registry.remove<Armament>(hull);
             registry.remove<Combatant>(hull);
             if (auto* helm = registry.try_get<Helm>(hull); helm != nullptr) {
@@ -199,7 +206,7 @@ namespace naval {
         }
     }
 
-    void UpdateWeapons(entt::registry& registry, float dt) {
+    void UpdateWeapons(entt::registry& registry, Audio& audio, float dt) {
         // Buffer projectiles and create them after iterating, so we never touch
         // pools while a view over them is live.
         std::vector<Projectile> spawned;
@@ -292,7 +299,15 @@ namespace naval {
                 shot.damage = weapon.damage;
                 shot.color = weapon.projectileColor;
                 shot.target = enemyFaction;
+                // The shot carries its arrival sounds with it: by the time it
+                // lands the gun that fired it may itself be on the bottom.
+                shot.impactSound = weapon.projectileImpactSound;
+                shot.splashSound = weapon.projectileSplashSound;
                 spawned.push_back(shot);
+
+                // Heard at the mount rather than the ship's centre, so the guns
+                // of one hull are each placed where they actually sit.
+                audio.Play(weapon.fireSound, mountPos);
 
                 weapon.cooldownRemaining = weapon.cooldown;
             }
@@ -303,7 +318,7 @@ namespace naval {
         }
     }
 
-    void UpdateProjectiles(entt::registry& registry, float dt) {
+    void UpdateProjectiles(entt::registry& registry, Audio& audio, float dt) {
         std::vector<entt::entity> expired;   // projectiles to remove
         std::vector<entt::entity> destroyed; // hulls whose health reached zero
         std::vector<Splash> splashes;        // splashes for shots that fell short of any hull
@@ -323,6 +338,7 @@ namespace naval {
             entt::entity const hull = StruckHull(registry, projectile);
             if (hull != entt::null) {
                 expired.push_back(entity);
+                audio.Play(projectile.impactSound, projectile.position);
                 // Apply damage only while the hull is still alive, so a hull is
                 // queued for destruction exactly once — on the hit that crosses
                 // zero — however many shots land the same tick.
@@ -341,13 +357,14 @@ namespace naval {
             if (projectile.remaining <= 0.0f) {
                 expired.push_back(entity);
                 splashes.push_back(Splash{ projectile.position, 0.0f, projectile.radiusM });
+                audio.Play(projectile.splashSound, projectile.position);
             }
         }
         for (auto entity : expired) {
             registry.destroy(entity);
         }
         for (auto entity : destroyed) {
-            BeginSinking(registry, entity);
+            BeginSinking(registry, audio, entity);
         }
         for (auto const& splash : splashes) {
             registry.emplace<Splash>(registry.create(), splash);

@@ -4,6 +4,13 @@
 #include <moth_ui/utils/vector.h>
 
 namespace naval {
+    // The limits of the wheel zoom, in pixels per metre. Shared rather than
+    // private to the wheel handler because the audio measures against them too:
+    // sounds play as authored at kMaxZoom and are at their quietest at kMinZoom,
+    // so "how zoomed out are we" is only meaningful relative to these.
+    inline constexpr float kMinZoom = 0.06f;
+    inline constexpr float kMaxZoom = 8.0f;
+
     // Box2D simulates in metres; moth draws in pixels. The camera is the single
     // place the two systems meet. All world state (body sizes, positions, ranges)
     // is authored in metres; the camera maps world<->screen about a fixed view

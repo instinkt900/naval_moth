@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/audio.h" // kNoSound
 #include "game/hull_shape.h"
 
 #include <box2d/box2d.h>
@@ -125,12 +126,21 @@ namespace naval {
         float cooldown = 0.0f;              // s between shots
 
         // Shot stats, copied from the database so firing needs no lookup. Speed
-        // and damage are the weapon's; the draw radius and colour come from its
-        // projectile (visuals).
+        // and damage are the weapon's; the draw radius, colour and arrival
+        // sounds come from its projectile. The projectile's sounds are stamped
+        // onto each shot as it is fired and travel with it, so they are held
+        // here only to be handed over.
         float muzzleVelocity = 0.0f;    // m/s the shot leaves the barrel at
         float damage = 0.0f;            // hit points removed on impact
         float projectileRadiusM = 0.0f; // shot draw radius, metres
         moth_ui::Color projectileColor; // shot draw colour
+        int projectileImpactSound = kNoSound; // heard where a shot strikes a hull
+        int projectileSplashSound = kNoSound; // heard where a shot falls in the sea
+
+        // What the gun itself sounds like, heard at the mount as it fires.
+        // Resolved at spawn for the same reason as the stats above: firing is a
+        // hot path and shouldn't be hashing strings. kNoSound fires silently.
+        int fireSound = kNoSound;
 
         float cooldownRemaining = 0.0f; // s until it can fire again
         bool hasTarget = false;         // a target sits in arc+range this tick
@@ -180,6 +190,18 @@ namespace naval {
         std::string name;
     };
 
+    // The sounds a hull itself makes, as opposed to the ones its guns and their
+    // shots make (those live on Weapon and Projectile). Handles are resolved
+    // from the hull definition at spawn; kNoSound is silent.
+    //
+    // It is a component rather than a field on Health because the hull is what
+    // owns these sounds, not its destructibility — the death of a ship is simply
+    // the first of them to be needed, and an engine rumble or a damage groan
+    // would belong here beside it.
+    struct Sounds {
+        int explosion = kNoSound; // played once as the hull is destroyed
+    };
+
     // Hit points. A hull loses `current` when a projectile strikes it and is
     // removed once it reaches zero. Only ships that can be destroyed carry this.
     struct Health {
@@ -214,6 +236,13 @@ namespace naval {
         float damage = 0.0f;           // hit points removed from the hull it strikes
         moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike
+
+        // What the shot sounds like when it arrives, carried on the shot itself
+        // because the weapon that fired it may be gone — sunk — by the time it
+        // lands. Exactly one of these plays: a shot either strikes a hull or
+        // falls in the sea. kNoSound is silent.
+        int impactSound = kNoSound;
+        int splashSound = kNoSound;
     };
 
     // How long a splash lingers before it has fully faded. Shared by the splash

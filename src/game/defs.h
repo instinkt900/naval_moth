@@ -16,12 +16,28 @@ namespace naval::defs {
     // validated when the database loads, so a bad id fails at startup rather
     // than at spawn time.
 
-    // A projectile's visuals — how a shot looks in flight. Speed and damage are
-    // characteristics of the firing weapon now, not the projectile; a projectile
-    // only says how the shot is drawn.
+    // A sound effect. `file` is resolved at load time against the assets root
+    // (the data directory's parent), so `"audio/gun.wav"` as authored becomes
+    // `assets/audio/gun.wav` here.
+    //
+    // Volume and pitch variance are properties of the recording rather than of
+    // whatever plays it — a gun sample is loud, a splash is not — which is why
+    // they live in this table and not on each weapon that names it.
+    struct Sound {
+        std::filesystem::path file;
+        float volume = 1.0f;        // playback gain before distance is applied; 1 = as recorded
+        float pitchVariance = 0.0f; // pitch is rolled in [1-v, 1+v] per play; 0 = always as recorded
+    };
+
+    // A projectile's visuals — how a shot looks in flight — and the sounds it
+    // makes when it arrives. Speed and damage are characteristics of the firing
+    // weapon now, not the projectile; a projectile only says how the shot is
+    // drawn and heard.
     struct Projectile {
         float radiusM = 0.0f; // draw radius, metres
         moth_ui::Color color;
+        std::string impactSound; // id into the sound table; empty = silent
+        std::string splashSound; // id into the sound table; empty = silent
     };
 
     // A weapon type. Fires its projectile at any targetable inside its arc and
@@ -35,6 +51,7 @@ namespace naval::defs {
         float range = 0.0f;       // metres
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees)
         float spread = 0.0f;      // radians (loaded from spreadDegrees); half-angle of the spread disc over the target
+        std::string fireSound;    // id into the sound table; empty = silent
     };
 
     // A weapon fixed to a hull at a bearing relative to the bow (radians;
@@ -67,6 +84,7 @@ namespace naval::defs {
         float angularDamping = 0.0f;
         float health = 0.0f; // hit points; 0 means the hull is not destructible
         moth_ui::Color color;
+        std::string explosionSound; // id into the sound table, played as it dies; empty = silent
         std::vector<Mount> mounts;
     };
 
@@ -86,9 +104,14 @@ namespace naval::defs {
     // are safe.
     class Database {
     public:
-        // Loads the four JSON tables from `dir` and validates every reference.
-        // Throws std::runtime_error on a missing file, parse error, or dangling
+        // Loads the JSON tables from `dir` and validates every reference. Throws
+        // std::runtime_error on a missing file, parse error, or dangling
         // reference.
+        //
+        // A sound reference is validated like any other: naming a sound id that
+        // isn't in the table is a typo and fails here. Whether the *file* that
+        // sound names exists is not this class's business — it isn't opened
+        // until Audio loads the bank, and a missing one is only a warning there.
         static Database Load(std::filesystem::path const& dir);
 
         Hull const& GetHull(std::string const& id) const;
@@ -97,11 +120,17 @@ namespace naval::defs {
         Enemy const& GetEnemy(std::string const& id) const;
         Player const& GetPlayer() const;
 
+        // The whole sound table. Unlike the others this is exposed wholesale,
+        // because Audio loads every sound up front rather than looking one up
+        // when it's wanted.
+        std::unordered_map<std::string, Sound> const& GetSounds() const { return m_sounds; }
+
     private:
         std::unordered_map<std::string, Hull> m_hulls;
         std::unordered_map<std::string, Weapon> m_weapons;
         std::unordered_map<std::string, Projectile> m_projectiles;
         std::unordered_map<std::string, Enemy> m_enemies;
+        std::unordered_map<std::string, Sound> m_sounds;
         Player m_player;
     };
 }

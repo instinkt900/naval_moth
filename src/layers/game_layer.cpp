@@ -29,9 +29,13 @@ namespace naval {
         // Populate the starting neighbourhood so land is present on frame zero.
         m_terrain.Update(m_camera);
 
+        // Before any spawn: a ship resolves the sound ids in its definitions
+        // into handles as it is built, which needs the bank already loaded.
+        m_audio.Load(m_db);
+
         // Player at the view centre; enemies scattered across the surrounding
         // water for the player to hunt down.
-        m_ship = SpawnHull(m_registry, m_world, m_db, m_db.GetPlayer().hull, m_camera.center, Faction::Player);
+        m_ship = SpawnHull(m_registry, m_world, m_db, m_audio, m_db.GetPlayer().hull, m_camera.center, Faction::Player);
         SpawnEnemies();
     }
 
@@ -62,7 +66,7 @@ namespace naval {
                 b2Vec2 const point{ m_camera.center.x + (radius * std::cos(angle)),
                                     m_camera.center.y + (radius * std::sin(angle)) };
                 if (m_terrain.IsWater(point, kClearanceM)) {
-                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, "raider", point);
+                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, m_audio, "raider", point);
                     // Point each enemy in a random direction so they aren't all
                     // bow-up; the spawn point is kept, only the heading changes.
                     m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
@@ -100,10 +104,9 @@ namespace naval {
         if (ImGui::GetIO().WantCaptureMouse) {
             return false;
         }
-        // Wheel drives zoom: each notch scales the view about its centre.
+        // Wheel drives zoom: each notch scales the view about its centre. The
+        // limits live in camera.h, since the audio measures against them too.
         constexpr float kZoomStep = 1.15f; // per notch
-        constexpr float kMinZoom = 0.06f;   // px/m
-        constexpr float kMaxZoom = 8.0f;  // px/m
         float const notches = static_cast<float>(event.GetDelta().y);
         m_camera.pixelsPerMeter = std::clamp(m_camera.pixelsPerMeter * std::pow(kZoomStep, notches),
                                              kMinZoom, kMaxZoom);
@@ -146,14 +149,19 @@ namespace naval {
         // Stream land in/out around the (possibly moved) camera view.
         m_terrain.Update(m_camera);
 
+        // Sounds are heard from the camera — where it looks and how far it has
+        // zoomed out — so the listener follows the pan above and must be set
+        // before any system below plays anything.
+        m_audio.SetListener(m_camera);
+
         // Enemies that sense a foe within aggro range break off to manoeuvre and
         // fight; the rest wander. Aggro runs first so it can claim the helm, and
         // wander then handles only the ships still on patrol.
         UpdateAggro(m_registry, dt);
         UpdateWander(m_registry, m_terrain, dt);
         UpdatePropulsion(m_registry, dt);
-        UpdateWeapons(m_registry, dt);
-        UpdateProjectiles(m_registry, dt);
+        UpdateWeapons(m_registry, m_audio, dt);
+        UpdateProjectiles(m_registry, m_audio, dt);
         UpdateSplashes(m_registry, dt);
         m_world.Step(dt, 8, 3);
 
@@ -163,6 +171,10 @@ namespace naval {
         // Age wrecks and remove them once they have fully sunk. After the step
         // so a wreck's Box2D body is destroyed outside the world update.
         UpdateSinking(m_registry, dt);
+
+        // Reclaim the voices of sounds that have finished. Last, so anything
+        // played this tick has had its voice taken before we look.
+        m_audio.Update();
     }
 
     void GameLayer::Draw() {
