@@ -149,10 +149,11 @@ namespace naval {
         // Stream land in/out around the (possibly moved) camera view.
         m_terrain.Update(m_camera);
 
-        // Sounds are heard from the camera — where it looks and how far it has
-        // zoomed out — so the listener follows the pan above and must be set
-        // before any system below plays anything.
+        // Sounds are heard from the camera, and shakes are felt from it — where
+        // it looks and how far it has zoomed in — so both follow the pan above
+        // and must be set before any system below plays or jolts anything.
         m_audio.SetListener(m_camera);
+        m_shake.SetCamera(m_camera);
 
         // Enemies that sense a foe within aggro range break off to manoeuvre and
         // fight; the rest wander. Aggro runs first so it can claim the helm, and
@@ -160,8 +161,8 @@ namespace naval {
         UpdateAggro(m_registry, dt);
         UpdateWander(m_registry, m_terrain, dt);
         UpdatePropulsion(m_registry, dt);
-        UpdateWeapons(m_registry, m_audio, dt);
-        UpdateProjectiles(m_registry, m_audio, dt);
+        UpdateWeapons(m_registry, m_audio, m_shake, dt);
+        UpdateProjectiles(m_registry, m_audio, m_shake, dt);
         UpdateSplashes(m_registry, dt);
         m_world.Step(dt, 8, 3);
 
@@ -171,6 +172,12 @@ namespace naval {
         // Age wrecks and remove them once they have fully sunk. After the step
         // so a wreck's Box2D body is destroyed outside the world update.
         UpdateSinking(m_registry, dt);
+
+        // Decay the shake and roll this frame's jolt, then hand it to the camera
+        // to draw with. After everything that fires, hits or explodes, so a gun
+        // fired this tick is felt on this frame rather than the next.
+        m_shake.Update(dt);
+        m_camera.shakeOffsetM = m_shake.OffsetM();
 
         // Reclaim the voices of sounds that have finished. Last, so anything
         // played this tick has had its voice taken before we look.

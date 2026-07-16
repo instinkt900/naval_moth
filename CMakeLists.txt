@@ -14,7 +14,9 @@ endif()
 set(SOURCES ${SOURCES}
 	src/naval_application.cpp
 	src/game/aggro_system.cpp
+	src/game/attenuation.cpp
 	src/game/audio.cpp
+	src/game/camera_shake.cpp
 	src/game/combat_system.cpp
 	src/game/defs.cpp
 	src/game/miniaudio_impl.cpp

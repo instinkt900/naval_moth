@@ -2,6 +2,7 @@
 
 #include "game/audio.h"
 #include "game/camera.h"
+#include "game/camera_shake.h"
 #include "game/defs.h"
 #include "game/terrain.h"
 
@@ -53,6 +54,9 @@ namespace naval {
 
         moth_graphics::graphics::IGraphics& m_graphics;
         Camera m_camera;
+        // The camera's shake. Owns the jolt; m_camera only carries the offset it
+        // is handed each tick, for drawing.
+        CameraShake m_shake;
         // Held WASD state; the camera pans continuously while any is down.
         bool m_panUp = false;
         bool m_panDown = false;

@@ -1,5 +1,6 @@
 #include "game/audio.h"
 
+#include "game/attenuation.h"
 #include "game/camera.h"
 #include "game/defs.h"
 
@@ -7,7 +8,6 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
-#include <cmath>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -21,57 +21,11 @@ namespace naval {
         // one.
         constexpr int kVoiceCount = 32;
 
-        // Volume is two independent things multiplied together: how far the
-        // sound is across the water, and how far the camera has pulled back from
-        // it. They are kept separate because they answer different questions and
-        // want different curves — folding the zoom into the distance (by giving
-        // the listener an altitude, say) ties the zoom response to kSilenceM and
-        // squashes it to nothing over the near half of the zoom range.
-
-        // How far a sound carries across the sea: audible out to kSilenceM,
-        // nothing beyond. There is no full-volume band around the listener, so
-        // the fade starts the moment a sound is off-centre.
-        constexpr float kSilenceM = 2500.0f;
-
-        // What the zoom does to the volume. A sound plays as authored only at
-        // kMaxZoom — right down on the action — and is scaled to kZoomGainFloor
-        // when pulled all the way out to kMinZoom, which is a floor rather than
-        // silence so a battle you have zoomed out to watch is still audible.
-        // Raise the floor to flatten the effect; lower it to make surveying the
-        // map quieter still.
-        constexpr float kZoomGainFloor = 0.15f;
-
         // How hard a sound at the edge of the view is pushed to one side. Short
         // of 1 deliberately: a full balance would silence the opposite channel
         // outright, which is a strange thing to hear from a map camera looking
         // down on the whole engagement.
         constexpr float kMaxPan = 0.8f;
-
-        // Volume for a sound `distance` metres from the listener. The fade is
-        // squared rather than linear so sound drops away quickly as it leaves
-        // the near field and then trails off, which reads as distance far better
-        // than an even ramp does.
-        float DistanceGain(float distance) {
-            if (distance >= kSilenceM) {
-                return 0.0f;
-            }
-            float const t = distance / kSilenceM;
-            return (1.0f - t) * (1.0f - t);
-        }
-
-        // Volume for the camera being zoomed to `pixelsPerMeter`.
-        //
-        // Interpolated on a log scale because zoom is multiplicative — the wheel
-        // scales it by a constant factor per notch — so a ramp even in the zoom
-        // number would spend nearly all its travel in the last few notches of
-        // zoom-in and do almost nothing across the rest of the range. Against
-        // the log, one notch of the wheel moves the gain by the same amount
-        // wherever you are.
-        float ZoomGain(float pixelsPerMeter) {
-            float const t = std::clamp(std::log(pixelsPerMeter / kMinZoom) / std::log(kMaxZoom / kMinZoom),
-                                       0.0f, 1.0f);
-            return kZoomGainFloor + ((1.0f - kZoomGainFloor) * t);
-        }
     }
 
     struct Audio::Impl {
@@ -105,8 +59,10 @@ namespace naval {
         std::unordered_map<std::string, int> byId;
         std::vector<Voice> voices{ kVoiceCount }; // fixed size; not an initializer_list of one
 
-        b2Vec2 listener{ 0.0f, 0.0f };   // where the camera looks (m)
-        float zoomGain = 1.0f;           // volume scale for how far the camera has pulled back
+        // How much of a sound reaches the player — its distance across the water
+        // and the camera's zoom, on the curve the camera shake fades on too.
+        Attenuation attenuation;
+        b2Vec2 listener{ 0.0f, 0.0f };   // where the camera looks (m); the pan's reference
         float listenerHalfWidthM = 1.0f; // half the sea the camera can see across (m); the pan scale
         std::mt19937 rng{ std::random_device{}() };
 
@@ -199,8 +155,8 @@ namespace naval {
     }
 
     void Audio::SetListener(Camera const& camera) {
+        m_impl->attenuation.SetCamera(camera);
         m_impl->listener = camera.center;
-        m_impl->zoomGain = ZoomGain(camera.pixelsPerMeter);
         // Half the sea the camera can see across: a metre of world is
         // pixelsPerMeter pixels, so half a viewport of pixels is this many
         // metres of water. It sets how far out a sound must be to reach the edge
@@ -217,7 +173,7 @@ namespace naval {
 
         // Worked out before taking a voice, so a shot fired far offscreen is
         // silent for free instead of occupying a voice an audible sound wants.
-        float const gain = m_impl->zoomGain * DistanceGain((position - m_impl->listener).Length());
+        float const gain = m_impl->attenuation.GainAt(position);
         if (gain <= 0.0f) {
             return;
         }

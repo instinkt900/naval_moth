@@ -126,21 +126,24 @@ namespace naval {
         float cooldown = 0.0f;              // s between shots
 
         // Shot stats, copied from the database so firing needs no lookup. Speed
-        // and damage are the weapon's; the draw radius, colour and arrival
-        // sounds come from its projectile. The projectile's sounds are stamped
-        // onto each shot as it is fired and travel with it, so they are held
-        // here only to be handed over.
+        // and damage are the weapon's; the draw radius, colour and what it does
+        // on arrival come from its projectile. The projectile's arrival effects
+        // are stamped onto each shot as it is fired and travel with it, so they
+        // are held here only to be handed over.
         float muzzleVelocity = 0.0f;    // m/s the shot leaves the barrel at
         float damage = 0.0f;            // hit points removed on impact
         float projectileRadiusM = 0.0f; // shot draw radius, metres
         moth_ui::Color projectileColor; // shot draw colour
         int projectileImpactSound = kNoSound; // heard where a shot strikes a hull
         int projectileSplashSound = kNoSound; // heard where a shot falls in the sea
+        float projectileImpactShakeM = 0.0f;  // camera shake where a shot strikes a hull (m)
 
-        // What the gun itself sounds like, heard at the mount as it fires.
-        // Resolved at spawn for the same reason as the stats above: firing is a
-        // hot path and shouldn't be hashing strings. kNoSound fires silently.
+        // What the gun itself does as it fires, felt and heard at the mount.
+        // The sound handle is resolved at spawn for the same reason as the stats
+        // above: firing is a hot path and shouldn't be hashing strings. kNoSound
+        // fires silently, and a shake of 0 fires without moving the camera.
         int fireSound = kNoSound;
+        float fireShakeM = 0.0f;
 
         float cooldownRemaining = 0.0f; // s until it can fire again
         bool hasTarget = false;         // a target sits in arc+range this tick
@@ -202,6 +205,20 @@ namespace naval {
         int explosion = kNoSound; // played once as the hull is destroyed
     };
 
+    // What the hull itself does to the camera, as opposed to what its guns and
+    // their shots do (those live on Weapon and Projectile). Amplitudes are
+    // metres of shake at full effect (see camera_shake.h); 0 is no shake.
+    //
+    // Its own component rather than a field on Sounds beside the explosion it
+    // fires with, because the two are the same *moment* and not the same thing —
+    // one is a noise and one is a blow, they are authored separately, and a hull
+    // may well want one without the other. Kept apart, each stays a coherent
+    // answer to "what does this hull sound like" and "what does this hull do to
+    // the picture".
+    struct Shake {
+        float explosionM = 0.0f; // felt once as the hull is destroyed
+    };
+
     // Hit points. A hull loses `current` when a projectile strikes it and is
     // removed once it reaches zero. Only ships that can be destroyed carry this.
     struct Health {
@@ -237,12 +254,18 @@ namespace naval {
         moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike
 
-        // What the shot sounds like when it arrives, carried on the shot itself
-        // because the weapon that fired it may be gone — sunk — by the time it
-        // lands. Exactly one of these plays: a shot either strikes a hull or
-        // falls in the sea. kNoSound is silent.
+        // What the shot does when it arrives, carried on the shot itself because
+        // the weapon that fired it may be gone — sunk — by the time it lands.
+        // Exactly one of the sounds plays: a shot either strikes a hull or falls
+        // in the sea. kNoSound is silent.
         int impactSound = kNoSound;
         int splashSound = kNoSound;
+
+        // Metres of camera shake at full effect where it strikes a hull; 0 = no
+        // shake. There is no splash equivalent on purpose: a shot that falls in
+        // the sea has hit nothing, and shaking the camera for it would tell the
+        // player a near miss landed when it did not.
+        float impactShakeM = 0.0f;
     };
 
     // How long a splash lingers before it has fully faded. Shared by the splash

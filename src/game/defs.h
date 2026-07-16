@@ -38,6 +38,10 @@ namespace naval::defs {
         moth_ui::Color color;
         std::string impactSound; // id into the sound table; empty = silent
         std::string splashSound; // id into the sound table; empty = silent
+        // How hard striking a hull knocks the camera, in metres of shake at full
+        // effect (see camera_shake.h); 0 = no shake. Only an impact shakes: a
+        // shot falling in the sea is a splash, not a blow, however close it lands.
+        float impactShakeM = 0.0f;
     };
 
     // A weapon type. Fires its projectile at any targetable inside its arc and
@@ -52,6 +56,7 @@ namespace naval::defs {
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees)
         float spread = 0.0f;      // radians (loaded from spreadDegrees); half-angle of the spread disc over the target
         std::string fireSound;    // id into the sound table; empty = silent
+        float fireShakeM = 0.0f;  // metres of camera shake at full effect as it fires; 0 = none
     };
 
     // A weapon fixed to a hull at a bearing relative to the bow (radians;
@@ -85,6 +90,7 @@ namespace naval::defs {
         float health = 0.0f; // hit points; 0 means the hull is not destructible
         moth_ui::Color color;
         std::string explosionSound; // id into the sound table, played as it dies; empty = silent
+        float explosionShakeM = 0.0f; // metres of camera shake at full effect as it dies; 0 = none
         std::vector<Mount> mounts;
     };
 

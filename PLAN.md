@@ -146,6 +146,40 @@ Missing audio is not an error. A weapon that names no sound is silently quiet, w
 is how content stays playable while sounds are still being found for it; only a
 *named* sound that isn't there is worth complaining about.
 
+## Camera shake
+
+The camera takes a knock when something violent happens in front of it — a gun
+firing, a shell striking home, a hull going up. Like the sound, it exists to give
+weight to things that already happen rather than to be a system of its own, and it
+is authored the same way: whatever makes the violence says in data how hard it
+shakes, and an unauthored shake is simply a still camera.
+
+Only a hit shakes. A shot that falls in the sea splashes and is heard, but it has
+struck nothing, and shaking for it would tell the player a blow landed when none
+did.
+
+**How far a shake reaches is the same question as how far a sound carries**, and
+so it is answered once, by one curve, for both. A gun you can barely hear is a gun
+that barely moves the picture; something loud enough to fill the speakers is
+something that shoves the view around. Tying them is what keeps the two honest —
+they cannot drift apart under tuning, because there is only one thing to tune.
+Distance and zoom both feed it: a thing fades to nothing over a set reach of open
+water, and pulling the camera back to survey the map damps everything down.
+
+What that buys is a jolt measured in metres of sea rather than in fractions of the
+screen, which means a shake can arrive from past the edge of the view when zoomed
+right in — the guns of a battle you are not looking at still reach you. That is the
+point of measuring in metres, not a side effect of it.
+
+Beyond that reach, the two systems share nothing: the shake decides for itself how
+a jolt piles up and dies away, and the sound pans and pitches on its own.
+
+Jolts from separate events add together and are capped, so a broadside landing at
+once hits harder than a single shell without throwing the view somewhere the player
+has to wait to get back. A shake is a knock rather than a rumble: it is most of the
+way gone within a fraction of a second, so a gun on a fast cooldown lands its next
+one into a camera that has nearly settled.
+
 ## Data & content
 
 Ships, weapons, projectiles, and enemies are defined as data, not code. Each is a

@@ -3,30 +3,35 @@
         "radiusM": 0.1,
         "color": [1.0, 0.9, 0.5, 1.0],
         "impactSound": "impact_small",
-        "splashSound": "splash_small"
+        "splashSound": "splash_small",
+        "impactShakeM": 0.3
     },
     "basic_shell": {
         "radiusM": 1.0,
         "color": [1.0, 0.9, 0.5, 1.0],
         "impactSound": "impact_small",
-        "splashSound": "splash_small"
+        "splashSound": "splash_small",
+        "impactShakeM": 0.3
     },
     "large_shell": {
         "radiusM": 2.0,
         "color": [1.0, 0.9, 0.5, 1.0],
         "impactSound": "impact_large",
-        "splashSound": "splash_large"
+        "splashSound": "splash_large",
+        "impactShakeM": 1.0
     },
     "ap_mark_8": {
         "radiusM": 3.0,
         "color": [1.0, 0.9, 0.5, 1.0],
         "impactSound": "impact_large",
-        "splashSound": "splash_large"
+        "splashSound": "splash_large",
+        "impactShakeM": 1.5
     },
     "shell_127": {
         "radiusM": 2.5,
         "color": [1.0, 0.9, 0.5, 1.0],
         "impactSound": "impact_large",
-        "splashSound": "splash_large"
+        "splashSound": "splash_large",
+        "impactShakeM": 0.8
     }
 }

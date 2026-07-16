@@ -81,6 +81,8 @@ namespace naval::defs {
             // silence, not an omission to complain about.
             p.impactSound = j.value("impactSound", std::string{});
             p.splashSound = j.value("splashSound", std::string{});
+            p.impactShakeM = j.value("impactShakeM", 0.0f);
+            Require(p.impactShakeM >= 0.0f, "projectile '" + id + "' impactShakeM must not be negative");
             db.m_projectiles.emplace(id, p);
         }
 
@@ -95,6 +97,8 @@ namespace naval::defs {
             w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad;
             w.spread = j.value("spreadDegrees", 0.0f) * moth_ui::kDegToRad;
             w.fireSound = j.value("fireSound", std::string{});
+            w.fireShakeM = j.value("fireShakeM", 0.0f);
+            Require(w.fireShakeM >= 0.0f, "weapon '" + id + "' fireShakeM must not be negative");
             db.m_weapons.emplace(id, w);
         }
 
@@ -130,6 +134,8 @@ namespace naval::defs {
             h.health = j.value("health", 0.0f);
             h.color = ParseColor(j.at("color"));
             h.explosionSound = j.value("explosionSound", std::string{});
+            h.explosionShakeM = j.value("explosionShakeM", 0.0f);
+            Require(h.explosionShakeM >= 0.0f, "hull '" + id + "' explosionShakeM must not be negative");
             for (auto const& jm : j.at("mounts")) {
                 Mount m;
                 m.weapon = jm.at("weapon").get<std::string>();

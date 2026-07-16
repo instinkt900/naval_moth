@@ -43,6 +43,7 @@ namespace naval {
         registry.emplace<Wake>(entity, Wake{});
         registry.emplace<Combatant>(entity, Combatant{ faction });
         registry.emplace<Sounds>(entity, Sounds{ audio.Find(hull.explosionSound) });
+        registry.emplace<Shake>(entity, Shake{ hull.explosionShakeM });
 
         Armament armament;
         for (auto const& mount : hull.mounts) {
@@ -62,7 +63,9 @@ namespace naval {
             weapon.projectileColor = projectileDef.color;
             weapon.projectileImpactSound = audio.Find(projectileDef.impactSound);
             weapon.projectileSplashSound = audio.Find(projectileDef.splashSound);
+            weapon.projectileImpactShakeM = projectileDef.impactShakeM;
             weapon.fireSound = audio.Find(weaponDef.fireSound);
+            weapon.fireShakeM = weaponDef.fireShakeM;
             armament.weapons.push_back(weapon);
         }
         registry.emplace<Armament>(entity, std::move(armament));

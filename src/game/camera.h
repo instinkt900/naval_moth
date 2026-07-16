@@ -5,9 +5,10 @@
 
 namespace naval {
     // The limits of the wheel zoom, in pixels per metre. Shared rather than
-    // private to the wheel handler because the audio measures against them too:
-    // sounds play as authored at kMaxZoom and are at their quietest at kMinZoom,
-    // so "how zoomed out are we" is only meaningful relative to these.
+    // private to the wheel handler because the attenuation measures against them
+    // too — a sound plays as authored at kMaxZoom and is at its quietest at
+    // kMinZoom, and a camera shake fades on the same curve — so "how zoomed out
+    // are we" is only meaningful relative to these.
     inline constexpr float kMinZoom = 0.06f;
     inline constexpr float kMaxZoom = 8.0f;
 
@@ -21,14 +22,24 @@ namespace naval {
         moth_ui::FloatVec2 viewSize{ 0.0f, 0.0f }; // view extent in pixels
         float pixelsPerMeter = 0.5f;              // world-to-screen scale (zoom)
 
+        // A few frames' worth of camera shake, displacing the whole view (m).
+        // Kept beside `center` rather than added into it because the two are
+        // different things: `center` is where the camera is looking — what the
+        // pan drives, what the terrain streams around, and what the shake and the
+        // audio measure their distances from — while this is a transient knock to
+        // the picture that CameraShake owns and rolls every tick. Both transforms
+        // below carry it, so a shaken frame and a click into a shaken frame agree
+        // on where the world is.
+        b2Vec2 shakeOffsetM{ 0.0f, 0.0f };
+
         moth_ui::FloatVec2 WorldToScreen(b2Vec2 world) const {
-            return { ((world.x - center.x) * pixelsPerMeter) + (viewSize.x * 0.5f),
-                     ((world.y - center.y) * pixelsPerMeter) + (viewSize.y * 0.5f) };
+            return { ((world.x - center.x - shakeOffsetM.x) * pixelsPerMeter) + (viewSize.x * 0.5f),
+                     ((world.y - center.y - shakeOffsetM.y) * pixelsPerMeter) + (viewSize.y * 0.5f) };
         }
 
         b2Vec2 ScreenToWorld(moth_ui::FloatVec2 screen) const {
-            return { ((screen.x - (viewSize.x * 0.5f)) / pixelsPerMeter) + center.x,
-                     ((screen.y - (viewSize.y * 0.5f)) / pixelsPerMeter) + center.y };
+            return { ((screen.x - (viewSize.x * 0.5f)) / pixelsPerMeter) + center.x + shakeOffsetM.x,
+                     ((screen.y - (viewSize.y * 0.5f)) / pixelsPerMeter) + center.y + shakeOffsetM.y };
         }
 
         float MToPx(float metres) const { return metres * pixelsPerMeter; }
