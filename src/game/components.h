@@ -146,13 +146,7 @@ namespace naval {
         // destroyed between updates.
         entt::entity target = entt::null;
 
-        // Aim point on the current target, chosen when engagement begins and
-        // held while it lasts, so several guns on one target spread their fire.
-        // Stored as signed fractions [-1, 1] of the target's half-extents
-        // (x fore-aft, y port-starboard) and resolved against the live target.
-        b2Vec2 aimOffset{ 0.0f, 0.0f };
-
-        // The current world aim point (the held hull spot, led for target motion)
+        // The current world aim point (the target's centre, led for its motion)
         // and the radius of the spread disc around it — refreshed each tick a
         // target is held. Firing samples a random point in this disc; the debug
         // draw previews it. Meaningful only while `target` is valid.

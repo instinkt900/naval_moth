@@ -23,14 +23,6 @@ namespace naval {
             return a;
         }
 
-        // A signed fraction in [-1, 1], used to pick an aim point within the
-        // span of a target's hull half-extents.
-        float RandomUnitSpan() {
-            static std::mt19937 rng{ std::random_device{}() };
-            static std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-            return dist(rng);
-        }
-
         // A uniformly random point within a disc of the given radius centred on
         // the origin. The sqrt on the radius keeps the distribution even across
         // the area rather than clustering toward the centre.
@@ -224,7 +216,6 @@ namespace naval {
 
             for (auto& weapon : shooters.get<Armament>(shooter).weapons) {
                 weapon.cooldownRemaining = std::max(0.0f, weapon.cooldownRemaining - dt);
-                bool const wasEngaging = weapon.hasTarget;
                 weapon.hasTarget = false;
 
                 float const arcCentre = shipAngle + weapon.bearing;
@@ -244,31 +235,17 @@ namespace naval {
                 }
                 weapon.hasTarget = true;
 
-                // On the tick engagement begins, pick a fresh aim point within
-                // the target's hull; hold it while the engagement lasts.
-                if (!wasEngaging) {
-                    weapon.aimOffset = b2Vec2{ RandomUnitSpan(), RandomUnitSpan() };
-                }
-
-                // Resolve the held aim offset against the target's live transform
-                // so the aim point tracks a fixed spot on the enemy hull as it
-                // moves, then lead it: aim where the target will be when the shot
-                // lands (first-order intercept — time to the aim point at the
-                // projectile's speed, advanced by the target's velocity), so a
-                // hull can't just outrun a shot fired at its present position.
+                // Aim at the target's centre, led for its motion: aim where the
+                // hull will be when the shot lands (first-order intercept — time
+                // to the target at the projectile's speed, advanced by the
+                // target's velocity), so a hull can't just outrun a shot fired at
+                // its present position. Where the shot actually falls is the
+                // spread's business alone.
                 b2Body* targetBody = registry.get<Physics>(target).body;
-                auto const& targetRenderable = registry.get<Renderable>(target);
                 b2Vec2 const targetPos = targetBody->GetPosition();
-                float const targetAngle = targetBody->GetAngle();
-                float const targetCos = std::cos(targetAngle);
-                float const targetSin = std::sin(targetAngle);
-                b2Vec2 const localAim{ weapon.aimOffset.x * targetRenderable.halfLengthM,
-                                       weapon.aimOffset.y * targetRenderable.halfBeamM };
-                b2Vec2 const aimPoint{ targetPos.x + (targetCos * localAim.x) - (targetSin * localAim.y),
-                                       targetPos.y + (targetSin * localAim.x) + (targetCos * localAim.y) };
                 b2Vec2 const targetVel = targetBody->GetLinearVelocity();
                 float const flightTime = weapon.muzzleVelocity > 0.0f
-                                             ? (aimPoint - mountPos).Length() / weapon.muzzleVelocity
+                                             ? (targetPos - mountPos).Length() / weapon.muzzleVelocity
                                              : 0.0f;
 
                 // The aim point and its spread disc, refreshed every tick a target
@@ -276,7 +253,7 @@ namespace naval {
                 // The spread angle is the opposite corner of a right triangle whose
                 // adjacent side is the distance to the aim point, so the disc's
                 // radius (= dist * tan(spread)) grows with range.
-                weapon.aimWorld = aimPoint + (flightTime * targetVel);
+                weapon.aimWorld = targetPos + (flightTime * targetVel);
                 weapon.spreadRadiusM = (weapon.aimWorld - mountPos).Length() * std::tan(weapon.spread);
 
                 // Fire when off cooldown and either the weapon engages
