@@ -53,5 +53,38 @@
         "spreadDegrees": 1.0,
         "fireSound": "gun_medium",
         "fireShakeM": 0.4
+    },
+    "mark-38": {
+        "projectile": "137mm",
+        "muzzleVelocity": 1345.0,
+        "damage": 2.0,
+        "cooldown": 0.33,
+        "range": 680.0,
+        "arcDegrees": 110.0,
+        "spreadDegrees": 0.5,
+        "fireSound": "gun_light",
+        "fireShakeM": 1.0
+    },
+    "oto-76": {
+        "projectile": "636mm",
+        "muzzleVelocity": 915.0,
+        "damage": 3.0,
+        "cooldown": 0.5,
+        "range": 1600.0,
+        "arcDegrees": 260.0,
+        "spreadDegrees": 1.0,
+        "fireSound": "gun_medium",
+        "fireShakeM": 1.0
+    },
+    "ciws": {
+        "projectile": "120mm",
+        "muzzleVelocity": 1100.0,
+        "damage": 1.0,
+        "cooldown": 0.013,
+        "range": 148.0,
+        "arcDegrees": 60.0,
+        "spreadDegrees": 2.0,
+        "fireSound": "gun_light",
+        "fireShakeM": 0.0
     }
 }

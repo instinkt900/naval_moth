@@ -1,7 +1,7 @@
 {
     "gun_light": {
-        "file": "audio/gun_light.wav",
-        "volume": 0.5,
+        "file": "audio/Beretta-handgun-single-gunshot-distant-523.wav",
+        "volume": 0.4,
         "pitchVariance": 0.15
     },
     "gun_medium": {

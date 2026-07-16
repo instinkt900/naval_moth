@@ -20,6 +20,16 @@
 #include <random>
 
 namespace naval {
+    namespace {
+        // An angle in degrees wrapped to [0, 360) — a compass reading, as
+        // opposed to the signed [-pi, pi] the steering systems work in (see
+        // angles.h). Nothing on a bridge is at a heading of minus forty.
+        float Norm360(float deg) {
+            deg = std::fmod(deg, 360.0f);
+            return deg < 0.0f ? deg + 360.0f : deg;
+        }
+    }
+
     GameLayer::GameLayer(moth_graphics::graphics::IGraphics& graphics, int widthPx, int heightPx)
         : m_graphics(graphics)
         , m_world(b2Vec2{ 0.0f, 0.0f }) // top-down: no gravity
@@ -295,6 +305,29 @@ namespace naval {
         b2Vec2 const forward = body->GetWorldVector(b2Vec2{ 1.0f, 0.0f });
         float const speedKnots = b2Dot(body->GetLinearVelocity(), forward) * kMetresPerSecToKnots;
         ImGui::TextUnformatted(fmt::format("Speed: {:.1f} kn", speedKnots).c_str());
+
+        // Heading as a three-digit compass reading, and how fast it is changing.
+        // The rate is the body's angular velocity read straight off: the
+        // propulsion system sets that directly rather than letting it accumulate
+        // from torque, so it is the rate of turn outright — nothing to
+        // differentiate, and the two readouts can't disagree about the same tick.
+        float const headingDeg = Norm360(body->GetAngle() * moth_ui::kRadToDeg);
+        float const rateDegPerSec = body->GetAngularVelocity() * moth_ui::kRadToDeg;
+        ImGui::TextUnformatted(fmt::format("Heading: {:03.0f}", headingDeg).c_str());
+
+        // Named to the side it is swinging rather than left signed, so the
+        // readout answers in the same terms as the rudder order that caused it —
+        // positive is starboard for both. A hull is never exactly steady while
+        // making way, so anything under the deadband reads as steady rather than
+        // flickering through hundredths.
+        constexpr float kSteadyDegPerSec = 0.05f;
+        if (std::abs(rateDegPerSec) < kSteadyDegPerSec) {
+            ImGui::TextUnformatted("Turn: steady");
+        } else {
+            ImGui::TextUnformatted(fmt::format("Turn: {:.1f} deg/s {}", std::abs(rateDegPerSec),
+                                               rateDegPerSec > 0.0f ? "stbd" : "port")
+                                       .c_str());
+        }
         ImGui::Separator();
 
         // Engine-order telegraph: quick throttle presets above the slider. Five
@@ -376,10 +409,6 @@ namespace naval {
         b2Body* self = m_registry.get<Physics>(m_ship).body;
         b2Vec2 const shipPos = self->GetPosition();
         float const shipAngle = self->GetAngle();
-        auto norm360 = [](float deg) {
-            deg = std::fmod(deg, 360.0f);
-            return deg < 0.0f ? deg + 360.0f : deg;
-        };
 
         b2Body* contact = m_registry.get<Physics>(order.target).body;
         b2Vec2 const toContact = contact->GetPosition() - shipPos;
@@ -388,8 +417,8 @@ namespace naval {
         // Bearing is relative to our own bow, heading is the contact's own
         // course — the two questions a gunnery picture has to answer.
         float const bearingDeg =
-            norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
-        float const headingDeg = norm360(contact->GetAngle() * moth_ui::kRadToDeg);
+            Norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
+        float const headingDeg = Norm360(contact->GetAngle() * moth_ui::kRadToDeg);
 
         char const* type = "contact";
         if (auto const* id = m_registry.try_get<Identity>(order.target); id != nullptr) {
