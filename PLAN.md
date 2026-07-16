@@ -140,6 +140,16 @@ Five definition sets, cross-referenced by id:
 - **Player** — the player's own ship: a hull (and later a chosen loadout). A single
   definition rather than a table, since there is only ever one player.
 
+Content is authored with real warships and their armament in mind — hull
+dimensions, speeds, and weapon fits should read as plausible for the vessel
+they're modelled on, so the fleet feels like a fleet rather than a set of
+abstract shapes. Gun ranges are the one deliberate exception: real naval gunnery
+reaches far enough that a true-scale engagement is two dots shooting at each
+other from off-screen, which is no fun to play. **Divide a real range by 10** when
+authoring a weapon, keeping the relative reach of one gun against another intact
+while pulling the whole fight into a range where maneuver matters and both ships
+are visible at once.
+
 References resolve by id — an enemy names a hull and weapons, a weapon names a
 projectile — and are validated when the definitions load, so a bad reference fails
 loudly at startup rather than at spawn time. Definitions are read-only content: a
