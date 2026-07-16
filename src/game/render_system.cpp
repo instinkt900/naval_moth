@@ -41,6 +41,48 @@ namespace naval {
 
         // --- wreck ---
         const moth_ui::Color kWreckColor{ 0.16f, 0.16f, 0.18f, 1.0f }; // charred hull; alpha set per sink stage
+
+        // --- shapes ---
+        // Curves are drawn as polylines subdivided by how long they actually are
+        // on screen: about one segment per kSweepSegmentPx of arc, which matches
+        // the density DrawFillCircleF uses. Measuring in pixels rather than
+        // counting segments is what keeps a curve smooth at any zoom without
+        // spending vertices on one that has shrunk to a dot — the same circle is
+        // a speck at survey zoom and fills the view up close.
+        //
+        // Clamped at both ends: a sliver still curves, and a battleship's arc at
+        // full zoom can't blow up the line count.
+        constexpr float kSweepSegmentPx = 4.0f;
+        constexpr int kMinSweepSegments = 8;
+        constexpr int kMaxSweepSegments = 128;
+
+        // An arc about a screen-space centre, from `startAngle` through `sweep`
+        // radians, as a polyline. Colour, blend mode and transform are the
+        // caller's — this only puts the line down.
+        void DrawSweep(moth_graphics::graphics::IGraphics& graphics, moth_ui::FloatVec2 centrePx,
+                       float radiusPx, float startAngle, float sweep) {
+            int const segments = std::clamp(
+                static_cast<int>(std::ceil((radiusPx * std::abs(sweep)) / kSweepSegmentPx)),
+                kMinSweepSegments, kMaxSweepSegments);
+            float const step = sweep / static_cast<float>(segments);
+            auto point = [&](int i) {
+                float const a = startAngle + (step * static_cast<float>(i));
+                return moth_ui::FloatVec2{ centrePx.x + (radiusPx * std::cos(a)),
+                                           centrePx.y + (radiusPx * std::sin(a)) };
+            };
+            moth_ui::FloatVec2 prev = point(0);
+            for (int i = 1; i <= segments; ++i) {
+                moth_ui::FloatVec2 const cur = point(i);
+                graphics.DrawLineF(prev, cur);
+                prev = cur;
+            }
+        }
+
+        // A full circle — a sweep all the way round.
+        void DrawCircle(moth_graphics::graphics::IGraphics& graphics, moth_ui::FloatVec2 centrePx,
+                        float radiusPx) {
+            DrawSweep(graphics, centrePx, radiusPx, 0.0f, 2.0f * b2_pi);
+        }
     }
 
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
@@ -202,22 +244,10 @@ namespace naval {
 
             graphics.SetColor(weapon.hasTarget ? kArcActiveColor : kArcColor);
 
-            // Subdivide the outer sweep by its pixel length so wide or far-
-            // reaching arcs stay smooth — a fixed count left a full-circle arc
-            // looking angular. ~4px per segment matches the density
-            // DrawFillCircleF uses; clamped so a sliver still curves and a huge
-            // arc doesn't blow up the line count.
             float const arcAngle = 2.0f * weapon.arcHalfAngle;
-            int const segments = std::clamp(static_cast<int>(std::ceil((rangePx * arcAngle) / 4.0f)), 8, 64);
-            float const step = arcAngle / static_cast<float>(segments);
-            moth_ui::FloatVec2 prev = edge(start);
-            graphics.DrawLineF(originPx, prev); // near radial edge
-            for (int i = 1; i <= segments; ++i) {
-                moth_ui::FloatVec2 const point = edge(start + (step * static_cast<float>(i)));
-                graphics.DrawLineF(prev, point);
-                prev = point;
-            }
-            graphics.DrawLineF(originPx, prev); // far radial edge
+            graphics.DrawLineF(originPx, edge(start));               // near radial edge
+            DrawSweep(graphics, originPx, rangePx, start, arcAngle); // the outer sweep between them
+            graphics.DrawLineF(originPx, edge(start + arcAngle));    // far radial edge
         }
     }
 
@@ -242,22 +272,8 @@ namespace naval {
             graphics.DrawLineF(originPx, aimPx);
 
             // The spread disc over the aim point: a shot may land anywhere within
-            // it, so its size shows the weapon's accuracy at this range. Full
-            // circle as a polyline, subdivided by pixel circumference like the arcs.
-            float const radiusPx = camera.MToPx(weapon.spreadRadiusM);
-            int const segments = std::clamp(static_cast<int>(std::ceil((2.0f * b2_pi * radiusPx) / 4.0f)), 16, 128);
-            float const step = (2.0f * b2_pi) / static_cast<float>(segments);
-            auto point = [&](int i) {
-                float const a = step * static_cast<float>(i);
-                return moth_ui::FloatVec2{ aimPx.x + (radiusPx * std::cos(a)),
-                                           aimPx.y + (radiusPx * std::sin(a)) };
-            };
-            moth_ui::FloatVec2 prev = point(0);
-            for (int i = 1; i <= segments; ++i) {
-                moth_ui::FloatVec2 const cur = point(i);
-                graphics.DrawLineF(prev, cur);
-                prev = cur;
-            }
+            // it, so its size shows the weapon's accuracy at this range.
+            DrawCircle(graphics, aimPx, camera.MToPx(weapon.spreadRadiusM));
         }
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
@@ -300,22 +316,7 @@ namespace naval {
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
         graphics.SetColor(armed ? kTargetRingArmedColor : kTargetRingColor);
-
-        // Full circle as a polyline, subdivided by pixel circumference so it stays
-        // smooth at any zoom — the same ~4px-per-segment density the arcs use.
-        int const segments = std::clamp(static_cast<int>(std::ceil((2.0f * b2_pi * radiusPx) / 4.0f)), 24, 128);
-        float const step = (2.0f * b2_pi) / static_cast<float>(segments);
-        auto point = [&](int i) {
-            float const a = step * static_cast<float>(i);
-            return moth_ui::FloatVec2{ centrePx.x + (radiusPx * std::cos(a)),
-                                       centrePx.y + (radiusPx * std::sin(a)) };
-        };
-        moth_ui::FloatVec2 prev = point(0);
-        for (int i = 1; i <= segments; ++i) {
-            moth_ui::FloatVec2 const cur = point(i);
-            graphics.DrawLineF(prev, cur);
-            prev = cur;
-        }
+        DrawCircle(graphics, centrePx, radiusPx);
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
@@ -337,22 +338,7 @@ namespace naval {
         // exact threshold the player has to cross. Alpha-blended like the wakes.
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
         graphics.SetColor(aggro->target != entt::null ? kAggroRingActiveColor : kAggroRingColor);
-
-        // Full circle as a polyline, subdivided by pixel circumference so it stays
-        // smooth at any zoom — the same ~4px-per-segment density the arcs use.
-        int const segments = std::clamp(static_cast<int>(std::ceil((2.0f * b2_pi * radiusPx) / 4.0f)), 24, 128);
-        float const step = (2.0f * b2_pi) / static_cast<float>(segments);
-        auto point = [&](int i) {
-            float const a = step * static_cast<float>(i);
-            return moth_ui::FloatVec2{ centrePx.x + (radiusPx * std::cos(a)),
-                                       centrePx.y + (radiusPx * std::sin(a)) };
-        };
-        moth_ui::FloatVec2 prev = point(0);
-        for (int i = 1; i <= segments; ++i) {
-            moth_ui::FloatVec2 const cur = point(i);
-            graphics.DrawLineF(prev, cur);
-            prev = cur;
-        }
+        DrawCircle(graphics, centrePx, radiusPx);
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
