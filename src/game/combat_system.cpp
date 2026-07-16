@@ -156,31 +156,18 @@ namespace naval {
             return entt::null;
         }
 
-        // The nearest hull of `enemyFaction` whose shape overlaps a weapon's arc
-        // and range, measured from `origin`, or entt::null if none qualifies.
-        entt::entity AcquireTarget(entt::registry& registry, Faction enemyFaction,
-                                   b2Vec2 origin, float arcCentre, float range, float arcHalfAngle) {
-            entt::entity best = entt::null;
-            float bestDist = std::numeric_limits<float>::max();
-            for (auto target : registry.view<Physics, Renderable, Combatant>()) {
-                if (registry.get<Combatant>(target).faction != enemyFaction) {
-                    continue;
-                }
-                auto const& renderable = registry.get<Renderable>(target);
-                b2Body* body = registry.get<Physics>(target).body;
-                b2Vec2 const centre = body->GetPosition();
-                if (!SectorOverlapsHull(origin, arcCentre, range, arcHalfAngle,
-                                        centre, body->GetAngle(),
-                                        renderable.halfLengthM, renderable.halfBeamM)) {
-                    continue;
-                }
-                float const dist = (centre - origin).Length();
-                if (dist < bestDist) {
-                    best = target;
-                    bestDist = dist;
-                }
+        // True if `target` is something `enemyFaction`'s guns may still shoot at:
+        // a live hull of that faction that is still in the registry. A destroyed
+        // hull loses its Combatant as it begins sinking, so this goes false the
+        // instant it dies — which is how a fire order ends itself.
+        bool IsEngageable(entt::registry& registry, entt::entity target, Faction enemyFaction) {
+            if (target == entt::null || !registry.valid(target)) {
+                return false;
             }
-            return best;
+            if (!registry.all_of<Physics, Renderable, Combatant>(target)) {
+                return false;
+            }
+            return registry.get<Combatant>(target).faction == enemyFaction;
         }
 
         // Transition a destroyed hull into its sinking death sequence: retire it
@@ -211,15 +198,53 @@ namespace naval {
         }
     }
 
+    entt::entity ContactAt(entt::registry& registry, b2Vec2 point, Faction faction, float pickRadiusM) {
+        // Nearest by hull centre among those the pick disc touches, so two
+        // overlapping contacts resolve to the one actually clicked on rather
+        // than to whichever the view happens to visit first.
+        entt::entity best = entt::null;
+        float bestDist = std::numeric_limits<float>::max();
+        for (auto hull : registry.view<Physics, Renderable, Combatant>()) {
+            if (registry.get<Combatant>(hull).faction != faction) {
+                continue;
+            }
+            auto const& renderable = registry.get<Renderable>(hull);
+            b2Body* body = registry.get<Physics>(hull).body;
+            b2Vec2 const centre = body->GetPosition();
+            if (!HullOverlapsCircle(centre, body->GetAngle(),
+                                    renderable.halfLengthM, renderable.halfBeamM,
+                                    point, pickRadiusM)) {
+                continue;
+            }
+            float const dist = (centre - point).Length();
+            if (dist < bestDist) {
+                best = hull;
+                bestDist = dist;
+            }
+        }
+        return best;
+    }
+
     void UpdateWeapons(entt::registry& registry, Audio& audio, CameraShake& shake, float dt) {
         // Buffer projectiles and create them after iterating, so we never touch
         // pools while a view over them is live.
         std::vector<Projectile> spawned;
 
-        auto shooters = registry.view<Physics, Armament>();
+        auto shooters = registry.view<Physics, Armament, FireOrder>();
 
         for (auto shooter : shooters) {
             Faction const enemyFaction = Opposing(registry.get<Combatant>(shooter).faction);
+            auto& order = shooters.get<FireOrder>(shooter);
+
+            // The order outlives nothing: once the contact is dead or gone the
+            // whole order goes with it, guns included. Done here rather than
+            // where a hull dies so there is one place that decides an order is
+            // over, however the target left — sunk, or removed outright.
+            if (!IsEngageable(registry, order.target, enemyFaction)) {
+                order.target = entt::null;
+                order.firing = false;
+            }
+
             b2Body* body = shooters.get<Physics>(shooter).body;
             b2Vec2 const shipPos = body->GetPosition();
             float const shipAngle = body->GetAngle();
@@ -238,13 +263,24 @@ namespace naval {
                 b2Vec2 const mountPos{ shipPos.x + (cosA * off.x) - (sinA * off.y),
                                        shipPos.y + (sinA * off.x) + (cosA * off.y) };
 
-                entt::entity const target =
-                    AcquireTarget(registry, enemyFaction, mountPos, arcCentre, weapon.range, weapon.arcHalfAngle);
-                weapon.target = target;
+                // The weapon makes no choice of its own: it only asks whether the
+                // ship's designated contact is inside its arc and range. So a
+                // gun that cannot bear holds, and one the target drifts into
+                // picks it up on that tick without being told again.
+                entt::entity const target = order.target;
                 if (target == entt::null) {
-                    weapon.fireRequested = false; // nothing to shoot at; drop any pending order
+                    weapon.target = entt::null;
                     continue;
                 }
+                auto const& targetHull = registry.get<Renderable>(target);
+                b2Body* targetBody = registry.get<Physics>(target).body;
+                if (!SectorOverlapsHull(mountPos, arcCentre, weapon.range, weapon.arcHalfAngle,
+                                        targetBody->GetPosition(), targetBody->GetAngle(),
+                                        targetHull.halfLengthM, targetHull.halfBeamM)) {
+                    weapon.target = entt::null;
+                    continue;
+                }
+                weapon.target = target;
                 weapon.hasTarget = true;
 
                 // Aim at the target's centre, led for its motion: aim where the
@@ -253,7 +289,6 @@ namespace naval {
                 // target's velocity), so a hull can't just outrun a shot fired at
                 // its present position. Where the shot actually falls is the
                 // spread's business alone.
-                b2Body* targetBody = registry.get<Physics>(target).body;
                 b2Vec2 const targetPos = targetBody->GetPosition();
                 b2Vec2 const targetVel = targetBody->GetLinearVelocity();
                 float const flightTime = weapon.muzzleVelocity > 0.0f
@@ -268,12 +303,10 @@ namespace naval {
                 weapon.aimWorld = targetPos + (flightTime * targetVel);
                 weapon.spreadRadiusM = (weapon.aimWorld - mountPos).Length() * std::tan(weapon.spread);
 
-                // Fire when off cooldown and either the weapon engages
-                // automatically or the player has clicked Fire. A manual order is
-                // one-shot: consumed whether or not it yields a shot this tick.
-                bool const wantFire = weapon.autoFire || weapon.fireRequested;
-                weapon.fireRequested = false;
-                if (!wantFire || weapon.cooldownRemaining > 0.0f) {
+                // Everything above happens whether or not the ship is shooting,
+                // so a held gun still tracks its mark and shows a live aim
+                // solution. Only the shot itself waits on the order.
+                if (!order.firing || weapon.cooldownRemaining > 0.0f) {
                     continue;
                 }
 

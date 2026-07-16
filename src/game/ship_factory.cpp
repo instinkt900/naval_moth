@@ -42,6 +42,10 @@ namespace naval {
         registry.emplace<Helm>(entity, Helm{});
         registry.emplace<Wake>(entity, Wake{});
         registry.emplace<Combatant>(entity, Combatant{ faction });
+        // Every combatant carries an order, empty until something issues one —
+        // the player's Target window, or the aggro system for an enemy. Without
+        // it the ship's guns are invisible to the weapons system.
+        registry.emplace<FireOrder>(entity, FireOrder{});
         registry.emplace<Sounds>(entity, Sounds{ audio.Find(hull.explosionSound) });
         registry.emplace<Shake>(entity, Shake{ hull.explosionShakeM });
 

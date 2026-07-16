@@ -56,6 +56,8 @@ when adding systems, and comment the ordering constraint when you do:
 
 - `UpdateAggro` before `UpdateWander` — aggro claims the helm first, so wander only steers
   ships still on patrol.
+- `UpdateAggro` before `UpdateWeapons` — aggro issues each engaging enemy's `FireOrder`, and
+  the weapons system is what consumes it; reversed, every enemy fires a tick stale.
 - Steering (aggro/wander/propulsion) before `m_world.Step()` — they apply forces the step
   integrates.
 - `UpdateWake` after the step — marks drop at the hull's settled position.

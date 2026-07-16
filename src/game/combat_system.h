@@ -1,18 +1,32 @@
 #pragma once
 
+#include <box2d/b2_math.h>
 #include <entt/entt.hpp>
 
 namespace naval {
     class Audio;
     class CameraShake;
+    enum class Faction;
 
-    // Targeting and firing. For every armed ship, each weapon looks for a hull
-    // of an opposing faction inside its arc and range; if one is there and the
-    // weapon is off cooldown, it spawns a projectile toward it. Also advances
-    // each weapon's cooldown and records whether it currently has a target (for
-    // rendering). Each shot fired is heard, and felt, at its gun's mount.
-    // `dt` is the tick length in seconds.
+    // Aiming and firing, driven by each ship's FireOrder. A weapon acquires
+    // nothing on its own: it tracks the contact its ship has designated whenever
+    // that contact is inside its arc and range, and shoots it only while the
+    // order says to fire and the gun is off cooldown. So a gun the target drifts
+    // into range of joins in unprompted, and one that cannot bear holds.
+    //
+    // This is also where an order ends: a designated contact that has died or
+    // left the registry clears the order outright, which is what stops a ship
+    // firing at a wreck. Also advances cooldowns and records which weapons bear
+    // (for rendering). Each shot is heard, and felt, at its gun's mount. `dt` is
+    // the tick length in seconds.
     void UpdateWeapons(entt::registry& registry, Audio& audio, CameraShake& shake, float dt);
+
+    // The hull of `faction` under a world point, or entt::null if none is there
+    // — how a click designates a target. `pickRadiusM` fattens the point into a
+    // disc so a distant contact stays clickable when zoomed out; the caller sets
+    // it from the zoom, since what is a comfortable click is a matter of pixels
+    // and only the camera knows the scale. Ties go to the nearest hull centre.
+    entt::entity ContactAt(entt::registry& registry, b2Vec2 point, Faction faction, float pickRadiusM);
 
     // Advances projectiles in a straight line and destroys those that have
     // travelled their full range. A shot that expires without striking a hull

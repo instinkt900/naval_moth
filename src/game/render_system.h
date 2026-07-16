@@ -28,8 +28,15 @@ namespace naval {
     // visibility both come from it).
     void DrawAggroRing(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
-    // The dashed course line and marker for a ship's active move target.
+    // The dashed course line and marker for a ship's active move target — where
+    // it is steering, as opposed to what it is shooting at (see DrawTargetMarker).
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
+
+    // A ring around the contact `ship` has designated (its FireOrder target):
+    // green while no gun bears on it, red once one does — so whether the target
+    // can be engaged from here is readable without the Target window. Draws
+    // nothing when no contact is designated.
+    void DrawTargetMarker(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
     // Every hull's fading wake, drawn on the water beneath the hulls.
     void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera);

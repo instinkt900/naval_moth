@@ -84,7 +84,7 @@ namespace naval {
     void UpdateAggro(entt::registry& registry, float /*dt*/) {
         AggroTuning const& tuning = AggroTuningRef();
 
-        auto view = registry.view<Physics, Combatant, Armament, Aggro, Helm, MoveTarget>();
+        auto view = registry.view<Physics, Combatant, Armament, Aggro, FireOrder, Helm, MoveTarget>();
         for (auto entity : view) {
             auto& aggro = view.get<Aggro>(entity);
 
@@ -115,6 +115,16 @@ namespace naval {
             } else {
                 aggro.target = nearest; // re-lock the nearest each tick while engaged
             }
+
+            // The aggro lock is the firing order: an enemy that has decided to
+            // fight shoots whenever a gun bears, with no separate decision to
+            // open fire the way the player has one. Issued here — where the
+            // decision to engage is actually made — so both sides' guns run off
+            // the same order, and the weapons system alone works out which
+            // batteries bear and when the order is spent.
+            auto& order = view.get<FireOrder>(entity);
+            order.target = aggro.target;
+            order.firing = aggro.target != entt::null;
 
             auto const& armament = view.get<Armament>(entity);
             if (aggro.target == entt::null || armament.weapons.empty()) {

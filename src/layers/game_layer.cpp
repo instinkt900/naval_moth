@@ -91,9 +91,33 @@ namespace naval {
             return false;
         }
         auto const pos = event.GetPosition();
+        b2Vec2 const world =
+            m_camera.ScreenToWorld({ static_cast<float>(pos.x), static_cast<float>(pos.y) });
+
+        // A click on a contact designates it rather than steering the ship into
+        // it. The pick tolerance is a comfortable click in pixels, converted to
+        // metres against the live zoom here, so a contact is no harder to hit
+        // when it has shrunk to a speck at survey zoom than when it fills the
+        // view — the sea below is a big target, but a ship on it isn't.
+        constexpr float kPickPx = 8.0f;
+        entt::entity const contact =
+            ContactAt(m_registry, world, Faction::Enemy, kPickPx / m_camera.pixelsPerMeter);
+        if (contact != entt::null) {
+            auto& order = m_registry.get<FireOrder>(m_ship);
+            // Designating never opens fire by itself — that is the Fire button's
+            // job. Guarded on the target actually changing so that clicking the
+            // contact you are already engaging doesn't check fire on it.
+            if (order.target != contact) {
+                order.target = contact;
+                order.firing = false;
+            }
+            return true;
+        }
+
+        // Open water: the click is a helm order. Each one moves the single
+        // target; nothing is queued.
         auto& target = m_registry.get<MoveTarget>(m_ship);
-        // Each click moves the single target; nothing is queued.
-        target.point = m_camera.ScreenToWorld({ static_cast<float>(pos.x), static_cast<float>(pos.y) });
+        target.point = world;
         target.active = true;
         return true;
     }
@@ -157,7 +181,9 @@ namespace naval {
 
         // Enemies that sense a foe within aggro range break off to manoeuvre and
         // fight; the rest wander. Aggro runs first so it can claim the helm, and
-        // wander then handles only the ships still on patrol.
+        // wander then handles only the ships still on patrol. It also issues each
+        // engaging enemy's fire order, which UpdateWeapons below consumes — so it
+        // must stay ahead of that too, or an enemy shoots a tick late.
         UpdateAggro(m_registry, dt);
         UpdateWander(m_registry, m_terrain, dt);
         UpdatePropulsion(m_registry, dt);
@@ -204,6 +230,11 @@ namespace naval {
         }
         DrawTarget(m_graphics, m_registry, m_camera, m_ship);
 
+        // The designated contact's ring. Beneath the hulls like the waypoint
+        // marker above, which it costs nothing to sit under: the ring clears the
+        // hull it encircles at any zoom, so only another ship can cover it.
+        DrawTargetMarker(m_graphics, m_registry, m_camera, m_ship);
+
         // Hulls on top; the player's is drawn last so it stays the topmost.
         for (auto ship : m_registry.view<Physics, Renderable>()) {
             if (ship != m_ship) {
@@ -220,6 +251,7 @@ namespace naval {
         }
 
         DrawHelmPanel();
+        DrawTargetPanel();
         DrawWeaponControls();
         DrawAggroDebug();
     }
@@ -326,7 +358,81 @@ namespace naval {
         ImGui::End();
     }
 
+    void GameLayer::DrawTargetPanel() {
+        auto& order = m_registry.get<FireOrder>(m_ship);
+
+        ImGui::Begin("Target");
+
+        // The weapons system drops the order the moment its contact dies, so an
+        // empty order here is the normal end of an engagement, not an error.
+        if (order.target == entt::null || !m_registry.valid(order.target)) {
+            ImGui::TextUnformatted("No target designated");
+            ImGui::TextUnformatted("Click a contact to designate it.");
+            ImGui::End();
+            return;
+        }
+
+        constexpr float kMetresPerSecToKnots = 1.94384f;
+        b2Body* self = m_registry.get<Physics>(m_ship).body;
+        b2Vec2 const shipPos = self->GetPosition();
+        float const shipAngle = self->GetAngle();
+        auto norm360 = [](float deg) {
+            deg = std::fmod(deg, 360.0f);
+            return deg < 0.0f ? deg + 360.0f : deg;
+        };
+
+        b2Body* contact = m_registry.get<Physics>(order.target).body;
+        b2Vec2 const toContact = contact->GetPosition() - shipPos;
+        float const rangeM = toContact.Length();
+        float const speedKn = contact->GetLinearVelocity().Length() * kMetresPerSecToKnots;
+        // Bearing is relative to our own bow, heading is the contact's own
+        // course — the two questions a gunnery picture has to answer.
+        float const bearingDeg =
+            norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
+        float const headingDeg = norm360(contact->GetAngle() * moth_ui::kRadToDeg);
+
+        char const* type = "contact";
+        if (auto const* id = m_registry.try_get<Identity>(order.target); id != nullptr) {
+            type = id->name.c_str();
+        }
+        ImGui::TextUnformatted(type);
+        ImGui::Separator();
+        ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
+        ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
+
+        if (auto const* health = m_registry.try_get<Health>(order.target);
+            health != nullptr && health->max > 0.0f) {
+            ImGui::ProgressBar(health->current / health->max, ImVec2(-1.0f, 0.0f),
+                               fmt::format("{:.0f} / {:.0f}", health->current, health->max).c_str());
+        }
+        ImGui::Separator();
+
+        // How much of the battery can actually reach the contact right now. The
+        // count is the honest answer to "why isn't anything happening?" after
+        // pressing Fire with the target abaft the beam of every gun.
+        int bearing = 0;
+        int total = 0;
+        if (auto const* armament = m_registry.try_get<Armament>(m_ship); armament != nullptr) {
+            total = static_cast<int>(armament->weapons.size());
+            for (auto const& weapon : armament->weapons) {
+                bearing += weapon.hasTarget ? 1 : 0;
+            }
+        }
+        ImGui::TextUnformatted(fmt::format("{} of {} guns bear", bearing, total).c_str());
+
+        // One button for the whole ship: every gun that bears fires until the
+        // contact is dead or this is clicked again. Never disabled for want of a
+        // gun bearing — ordering fire while manoeuvring onto the target is the
+        // point, and the guns join in as the arcs come onto it.
+        if (ImGui::Button(order.firing ? "Hold" : "Fire")) {
+            order.firing = !order.firing;
+        }
+
+        ImGui::End();
+    }
+
     void GameLayer::DrawWeaponControls() {
+        auto const& order = m_registry.get<FireOrder>(m_ship);
         ImGui::Begin("Weapons");
         auto* armament = m_registry.try_get<Armament>(m_ship);
         if (armament == nullptr) {
@@ -334,14 +440,6 @@ namespace naval {
             ImGui::End();
             return;
         }
-        constexpr float kMetresPerSecToKnots = 1.94384f;
-        b2Body* body = m_registry.get<Physics>(m_ship).body;
-        b2Vec2 const shipPos = body->GetPosition();
-        float const shipAngle = body->GetAngle();
-        auto norm360 = [](float deg) {
-            deg = std::fmod(deg, 360.0f);
-            return deg < 0.0f ? deg + 360.0f : deg;
-        };
 
         for (std::size_t i = 0; i < armament->weapons.size(); ++i) {
             ImGui::Separator();
@@ -352,42 +450,21 @@ namespace naval {
             ImGui::Checkbox("Show arc", &weapon.showArc);
             ImGui::SameLine();
             ImGui::Checkbox("Show spread", &weapon.showSpread);
-            ImGui::SameLine();
-            ImGui::Checkbox("Auto fire", &weapon.autoFire);
 
-            bool const ready = weapon.hasTarget && weapon.cooldownRemaining <= 0.0f;
-            ImGui::BeginDisabled(!ready);
-            if (ImGui::Button("Fire")) {
-                weapon.fireRequested = true;
-            }
-            ImGui::EndDisabled();
+            // What this gun is doing about the ship's order. Read-only: the
+            // order is the Target window's to give, and a gun has no say in it
+            // beyond whether it can reach.
+            char const* status = "no bearing";
             if (weapon.cooldownRemaining > 0.0f) {
-                ImGui::SameLine();
-                ImGui::TextUnformatted(
-                    fmt::format("reloading {:.1f}s", weapon.cooldownRemaining).c_str());
+                status = "reloading";
+            } else if (weapon.hasTarget) {
+                status = order.firing ? "firing" : "bears, holding";
             }
-
-            // The target picture, guarded by registry.valid since the locked
-            // contact may have been destroyed since the last weapons update.
-            if (weapon.target != entt::null && m_registry.valid(weapon.target)) {
-                b2Body* contact = m_registry.get<Physics>(weapon.target).body;
-                b2Vec2 const toContact = contact->GetPosition() - shipPos;
-                float const rangeM = toContact.Length();
-                float const speedKn = contact->GetLinearVelocity().Length() * kMetresPerSecToKnots;
-                float const bearingDeg =
-                    norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
-                float const headingDeg = norm360(contact->GetAngle() * moth_ui::kRadToDeg);
-                char const* type = "contact";
-                if (auto const* id = m_registry.try_get<Identity>(weapon.target); id != nullptr) {
-                    type = id->name.c_str();
-                }
-                ImGui::TextUnformatted(fmt::format("Target: {}", type).c_str());
+            if (weapon.cooldownRemaining > 0.0f) {
                 ImGui::TextUnformatted(
-                    fmt::format("  rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
-                ImGui::TextUnformatted(
-                    fmt::format("  brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
+                    fmt::format("{} {:.1f}s", status, weapon.cooldownRemaining).c_str());
             } else {
-                ImGui::TextUnformatted("No target");
+                ImGui::TextUnformatted(status);
             }
 
             ImGui::PopID();

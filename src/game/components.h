@@ -146,17 +146,17 @@ namespace naval {
         float fireShakeM = 0.0f;
 
         float cooldownRemaining = 0.0f; // s until it can fire again
-        bool hasTarget = false;         // a target sits in arc+range this tick
+        bool hasTarget = false;         // the ship's designated contact bears this tick
 
         // Player-facing controls, one set per weapon.
-        bool showArc = true;        // draw this weapon's firing arc
-        bool showSpread = false;    // draw a debug preview of the spread disc over the current target
-        bool autoFire = true;       // acquire and fire automatically
-        bool fireRequested = false; // a manual fire order, consumed next update
+        bool showArc = true;     // draw this weapon's firing arc
+        bool showSpread = false; // draw a debug preview of the spread disc over the current target
 
-        // The contact this weapon currently has locked, or entt::null. Refreshed
-        // every update; read it only after registry.valid, as the target may be
-        // destroyed between updates.
+        // The ship's designated contact while this weapon bears on it, else
+        // entt::null — a weapon does not choose a target, it only answers
+        // whether the one the ship named is inside its arc and range (see
+        // FireOrder). Refreshed every update; read it only after registry.valid,
+        // as the target may be destroyed between updates.
         entt::entity target = entt::null;
 
         // The current world aim point (the target's centre, led for its motion)
@@ -167,11 +167,36 @@ namespace naval {
         float spreadRadiusM = 0.0f;
     };
 
-    // Every weapon a ship carries. Weapons acquire targets and fire
-    // independently. A vector (rather than one component per weapon) because an
-    // entity holds at most one component of a given type.
+    // Every weapon a ship carries. A vector (rather than one component per
+    // weapon) because an entity holds at most one component of a given type.
     struct Armament {
         std::vector<Weapon> weapons;
+    };
+
+    // A ship's engagement order: the one contact it is fighting, and whether it
+    // is actually shooting at it. Designating and firing are deliberately
+    // separate — you pick a contact, read what it is, and only then commit — so
+    // an order with `firing` false is a ship tracking its mark with the guns
+    // silent, arcs lit and aim solutions live.
+    //
+    // The order lives on the ship rather than on each weapon because that is the
+    // decision being made: "engage that one", not "gun three, engage that one".
+    // Every weapon then answers only whether the contact is inside its own arc
+    // and range. A battery that cannot bear simply holds, and starts firing the
+    // moment the target drifts into its arc, with no further order — which is
+    // why the order carries a contact and not a list of guns.
+    //
+    // The weapons system clears the whole order once the target is dead or gone
+    // from the registry; that is what makes "fire until it is dead" terminate,
+    // and it is why nothing else needs to watch for a target's death.
+    //
+    // The player's order comes from clicking a contact and the Target window's
+    // Fire/Hold. An enemy's is issued by the aggro system, which fires as soon
+    // as it has locked something. One component either way, so both sides shoot
+    // down the same path rather than the AI having a private one.
+    struct FireOrder {
+        entt::entity target = entt::null; // the designated contact, or null for none
+        bool firing = false;              // true = shoot it whenever a gun bears
     };
 
     // Which side a ship fights for. Weapons engage hulls of a different

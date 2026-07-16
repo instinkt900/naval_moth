@@ -13,9 +13,10 @@ messages.
 
 - **Momentum matters.** Ships are weighty. They turn slowly, carry speed, and
   cannot stop on a dime. Positioning is a skill, not a given.
-- **Command, don't pilot.** The player issues intent (a destination) and the
-  ship works out how to get there. Combat is automatic once weapons have valid
-  targets — the player's job is maneuver and positioning.
+- **Command, don't pilot.** The player issues intent — a destination, a contact
+  to engage — and the ship works out how to carry it out. Gunnery is automatic
+  once fire is ordered: which guns bear is the ship's problem, not the player's.
+  The player's job is manoeuvre, positioning, and choosing the fight.
 - **Composable ships.** A ship is a hull plus attached components (chiefly
   weapons). Loadouts differ; behaviour follows from the components present.
 
@@ -57,27 +58,44 @@ Weapons are components mounted on a ship. Each weapon carries:
 - **targeting parameters**: firing arc, a range band (below), and which enemy
   types it may engage.
 
-Weapons acquire targets on their own and fire automatically, respecting their
-cooldown, whenever a valid target sits inside their arc and firing range.
-Different weapons on the same ship target independently.
+Weapons acquire nothing on their own. The ship designates one contact and orders
+fire; each weapon then only answers whether that contact is inside its own arc
+and range, and shoots it while it is. Guns are not commanded individually — the
+order is the captain's, and the batteries that can reach obey it.
+
+### Designating a target
+
+The player designates a contact by **clicking it**; clicking open water is a helm
+order as before, so the two never collide. Designating does not open fire — you
+pick a contact, read what it is, and only then commit.
+
+A **ring** marks the designated contact on the water: green while no gun bears on
+it, red the moment one does. So "am I in a position to hit that?" is answerable
+from the sea itself, without reading the panel — and since the ring reads the
+guns' own bearing test, it turns red exactly when the guns would actually shoot.
+
+The **Target window** shows the designated contact's picture — type, range,
+speed, bearing, heading and health — along with how much of the battery bears on
+it, and carries the single **Fire** button, which becomes **Hold** once fire is
+ordered. Fire is available whether or not anything bears: ordering fire while
+still manoeuvring onto the target is the point, and each gun joins in of its own
+accord as its arc comes onto the contact.
+
+Fire continues until the contact is dead or Hold is clicked. Nothing else ends
+it, and a target that sinks clears the order outright.
 
 ### Per-weapon controls
 
-Automatic fire is the default, but the player can take hands-on command of each
-gun the active ship carries. The control panel lists every weapon and, per
-weapon, offers:
+The weapons panel lists every gun the active ship carries. Per weapon it offers a
+toggle for whether it **draws its firing arc** (so the display can be kept clean
+or one gun's coverage highlighted), the same for its **spread preview**, and a
+read-only **status** — bearing, holding, firing, or reloading. There is no
+per-weapon fire control: a gun has no say in the engagement beyond whether it can
+reach.
 
-- a toggle for whether it **draws its firing arc**, so the display can be kept
-  clean or a single gun's coverage highlighted;
-- a toggle for **automatic fire** — on, it engages on its own as above; off, it
-  holds fire until told;
-- a **fire button** to shoot on command (still bound by cooldown and a valid
-  target in arc and range); and
-- a **target readout** for whatever contact the gun has locked: range, speed,
-  bearing, heading, and contact type — the tactical picture for that weapon.
-
-Controls are independent per weapon, so one gun can free-fire while another is
-held for a manual salvo.
+The enemy AI issues the same order through the same path — its aggro lock *is* a
+fire order — so both sides shoot by identical rules rather than the AI having a
+private one.
 
 ### Range band
 
