@@ -129,6 +129,17 @@ namespace naval {
     // drawn arc.
     struct Weapon {
         WeaponKind kind = WeaponKind::Gun;  // gun vs launcher; branches aiming and firing only
+
+        // A point-defence mount (a CIWS) answers inbound guided air munitions
+        // rather than ships, and stands right outside the ship's fire order: it
+        // is never handed the designated contact, never salvos, never joins free
+        // fire. Its one control is the enable tick below. While enabled it lays
+        // on the nearest incoming missile in its arc and knocks it down. Always a
+        // Gun kind — a launcher is not a point-defence weapon — and handled on its
+        // own branch in the weapons system, so none of the anti-ship targeting
+        // touches it. Set from the gun definition at spawn.
+        bool pointDefense = false;
+
         std::string name;                   // weapon display name (the def's name, or its id), for the readout
         float bearing = 0.0f;               // rad, mount direction relative to bow
         b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
@@ -164,6 +175,7 @@ namespace naval {
         float munitionMinRange = 0.0f;     // m the munition must travel to arm; also the drawn dead-zone radius
         float munitionInitialSpeed = 0.0f; // m/s off the rail (Launcher kind); a VLS launches at rest
         bool munitionWaterborne = false;   // true for a torpedo (water medium); it swims and makes no surface splash
+        float munitionHealth = 0.0f;       // warhead health stamped on each launched munition, for point defence to whittle down; 0 = the munition cannot be shot down
 
         // Launcher tubes. A launcher fires from a pool of ready tubes rather than
         // on a single cooldown: up to readyTubes launch in quick succession, each
@@ -215,7 +227,10 @@ namespace naval {
         // The contact this weapon is laid on, or entt::null if it can reach
         // none — normally the ship's designated contact, and under free fire
         // whatever else the gun found when that contact was out of its arc (see
-        // FireOrder). Distinct from hasTarget above, which stays a strict answer
+        // FireOrder). A point-defence mount instead lays this on the inbound
+        // munition entity it is engaging, which is why the field is a bare entity
+        // and not assumed to carry a hull's components — read it only after
+        // registry.valid. Distinct from hasTarget above, which stays a strict answer
         // about the *designated* contact: the two agree except under free fire,
         // where a gun may be laid on something the ship never named. That is why
         // the target ring and the "guns bear" count read hasTarget — they are
@@ -399,6 +414,14 @@ namespace naval {
         float damage = 0.0f;           // hit points removed from the hull it strikes
         moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike
+
+        // Warhead health, for point defence to knock a guided munition down before
+        // it strikes. A CIWS chips this each burst; at zero the munition is
+        // destroyed in flight. Meaningful only for a guided air munition (a shell
+        // is gone the instant it lands, and a torpedo runs below the reach of
+        // these guns); 0 leaves the munition impervious to point defence, which is
+        // a deliberate content lever, not merely the ballistic default.
+        float health = 0.0f;
 
         // Guidance and the munition fields it needs; all inert for a ballistic
         // shot. homingTarget is the hull the munition steers toward, cleared to

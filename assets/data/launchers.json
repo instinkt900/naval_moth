@@ -49,5 +49,16 @@
         "turnRateDegrees": 0.0,
         "fireSound": "launcher_basic",
         "fireShakeM": 0.5
+    },
+    "test_launcher": {
+        "name": "Test Launcher",
+        "type": "launcher",
+        "tubes": 1,
+        "launchInterval": 1.0,
+        "reloadTime": 6.0,
+        "arcDegrees": 360.0,
+        "turnRateDegrees": 0.0,
+        "fireSound": "launcher_basic",
+        "fireShakeM": 0.3
     }
 }

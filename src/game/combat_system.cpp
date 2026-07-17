@@ -27,6 +27,13 @@ namespace naval {
             return b2Vec2{ r * std::cos(angle), r * std::sin(angle) };
         }
 
+        // A uniform draw in [0, 1), for probabilistic hit rolls (point defence).
+        float RandomUnit() {
+            static std::mt19937 rng{ std::random_device{}() };
+            static std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+            return unit(rng);
+        }
+
         // True if segments a-b and c-d cross. Parallel/collinear counts as no
         // crossing; the other overlap tests cover those degenerate cases.
         bool SegmentsCross(b2Vec2 a, b2Vec2 b, b2Vec2 c, b2Vec2 d) {
@@ -176,6 +183,99 @@ namespace naval {
             return best;
         }
 
+        // Slew a mount's barrel one tick toward the world bearing `aimWorldBearing`,
+        // returning true once it has settled on that mark. The lay lives in
+        // weapon.aimBearing as a bow-relative angle; the arc spans arcHalfAngle
+        // either side of the mount bearing, and `arcCentre` is that mount bearing in
+        // world space (shipAngle + bearing).
+        //
+        // The training runs in the offset from the mount bearing and steps by a
+        // plain difference, not the shortest wrapped path. That is what keeps a wide
+        // arc's barrel sweeping across its own field, through the centre, rather than
+        // taking the short way round through the blind sector behind the mount: a
+        // target jumping from one arc edge to the far one on an arc wider than 180
+        // degrees would otherwise slew the barrel straight out of the arc. The offset
+        // is clamped to the arc every tick, so the lay can never leave it. A turn
+        // rate of zero or less trains in a single step.
+        bool TrainBarrel(Weapon& weapon, float aimWorldBearing, float arcCentre, float dt) {
+            float const desiredOffset =
+                std::clamp(WrapPi(aimWorldBearing - arcCentre), -weapon.arcHalfAngle, weapon.arcHalfAngle);
+            float const currentOffset = weapon.aimBearing - weapon.bearing;
+            float const delta = desiredOffset - currentOffset;
+            float const step = weapon.turnRate * dt;
+            bool const snap = weapon.turnRate <= 0.0f || std::abs(delta) <= step;
+            float offset = currentOffset + (snap ? delta : std::copysign(step, delta));
+            offset = std::clamp(offset, -weapon.arcHalfAngle, weapon.arcHalfAngle);
+            weapon.aimBearing = weapon.bearing + offset;
+            constexpr float kAcquiredToleranceRad = 0.017f; // ~1 degree
+            return std::abs(desiredOffset - offset) <= kAcquiredToleranceRad;
+        }
+
+        // True if `munition` is still a live inbound air threat a point-defence
+        // mount defending `defend` may engage: a valid, guided, airborne projectile
+        // aimed at that faction with warhead health left. The shared predicate
+        // behind both acquiring a fresh target and holding the current one.
+        bool IsInboundMunition(entt::registry& registry, entt::entity munition, Faction defend) {
+            if (munition == entt::null || !registry.valid(munition)) {
+                return false;
+            }
+            auto const* p = registry.try_get<Projectile>(munition);
+            return p != nullptr && p->guidance == Guidance::Guided && !p->waterborne &&
+                   p->target == defend && p->health > 0.0f;
+        }
+
+        // The nearest inbound guided *air* munition that a point-defence mount at
+        // `origin` can bear on and that no other mount has already taken this tick,
+        // or entt::null if none qualifies — a live inbound threat (see
+        // IsInboundMunition), absent from `claimed`, whose position falls inside the
+        // mount's arc and range. `claimed` is how the battery spreads its fire: each
+        // mount adds the missile it locks, so the next mount looks past it to the
+        // next threat rather than dogpiling one and leaving others to leak. Only
+        // point defence reaches this — the anti-ship path never looks at projectiles
+        // as targets.
+        entt::entity AcquireMunition(entt::registry& registry, Faction defend, b2Vec2 origin,
+                                     float arcCentre, float range, float arcHalfAngle,
+                                     std::vector<entt::entity> const& claimed) {
+            entt::entity best = entt::null;
+            float bestDist = std::numeric_limits<float>::max();
+            for (auto entity : registry.view<Projectile>()) {
+                if (!IsInboundMunition(registry, entity, defend)) {
+                    continue;
+                }
+                if (std::find(claimed.begin(), claimed.end(), entity) != claimed.end()) {
+                    continue;
+                }
+                auto const& munition = registry.get<Projectile>(entity);
+                if (!PointInSector(munition.position, origin, arcCentre, range, arcHalfAngle)) {
+                    continue;
+                }
+                float const dist = (munition.position - origin).Length();
+                if (dist < bestDist) {
+                    best = entity;
+                    bestDist = dist;
+                }
+            }
+            return best;
+        }
+
+        // The munition a point-defence mount engages this tick: the one it was
+        // already tracking (`held`) if that is still a live threat inside its arc
+        // that no earlier mount has taken, otherwise the nearest unclaimed threat it
+        // can bear on. Holding the current mark is what commits a mount from the
+        // moment it starts slewing — it keeps and re-claims its target across ticks
+        // rather than re-picking the nearest each tick and swapping onto another
+        // mount's mark as the missiles close.
+        entt::entity SelectMunition(entt::registry& registry, entt::entity held, Faction defend,
+                                    b2Vec2 origin, float arcCentre, float range, float arcHalfAngle,
+                                    std::vector<entt::entity> const& claimed) {
+            if (IsInboundMunition(registry, held, defend) &&
+                std::find(claimed.begin(), claimed.end(), held) == claimed.end() &&
+                PointInSector(registry.get<Projectile>(held).position, origin, arcCentre, range, arcHalfAngle)) {
+                return held;
+            }
+            return AcquireMunition(registry, defend, origin, arcCentre, range, arcHalfAngle, claimed);
+        }
+
         // True if `target` is something `enemyFaction`'s guns may still shoot at:
         // a live hull of that faction that is still in the registry. A destroyed
         // hull loses its Combatant as it begins sinking, so this goes false the
@@ -247,13 +347,26 @@ namespace naval {
 
     void UpdateWeapons(entt::registry& registry, Audio& audio, CameraShake& shake, float dt) {
         // Buffer projectiles and create them after iterating, so we never touch
-        // pools while a view over them is live.
+        // pools while a view over them is live. Point defence adds two more
+        // deferred effects: munitions it shot down (destroyed after the loop, as
+        // they are unrelated entities the shooter view does not cover) and the
+        // splash each throws up as its warhead cooks off.
         std::vector<Projectile> spawned;
+        std::vector<entt::entity> downedMunitions;
+        std::vector<Splash> splashes;
+
+        // Every inbound munition a point-defence mount has locked this tick, so the
+        // batteries spread their fire: each mount looks past what an earlier one
+        // already took (see AcquireMunition). One list for the whole pass — a
+        // munition is aimed at a single faction, so only that faction's guns ever
+        // consider it, and the shared list never crosses the sides.
+        std::vector<entt::entity> claimedMunitions;
 
         auto shooters = registry.view<Physics, Armament, FireOrder>();
 
         for (auto shooter : shooters) {
-            Faction const enemyFaction = Opposing(registry.get<Combatant>(shooter).faction);
+            Faction const ownFaction = registry.get<Combatant>(shooter).faction;
+            Faction const enemyFaction = Opposing(ownFaction);
             auto& order = shooters.get<FireOrder>(shooter);
 
             // The order outlives nothing: once the contact is dead or gone the
@@ -275,6 +388,106 @@ namespace naval {
             float const shipAngle = body->GetAngle();
 
             for (auto& weapon : shooters.get<Armament>(shooter).weapons) {
+                // Point defence is a world apart from anti-ship gunnery: it ignores
+                // the fire order entirely (no designated contact, no salvo, no free
+                // fire), answering only to its own enable tick, and it hunts inbound
+                // missiles rather than hulls. So it runs on its own branch here and
+                // never falls through to any of the targeting below.
+                if (weapon.pointDefense) {
+                    weapon.cooldownRemaining = std::max(0.0f, weapon.cooldownRemaining - dt);
+                    // hasTarget reports on the *designated ship* contact, which a
+                    // CIWS never bears on; keep it false so it neither inflates the
+                    // "guns bear" count nor lights the target ring.
+                    weapon.hasTarget = false;
+
+                    float const arcCentre = shipAngle + weapon.bearing;
+                    b2Vec2 const mountPos = body->GetWorldPoint(weapon.mountOffset);
+
+                    // Switched out, it holds fire and tracks nothing — the enable
+                    // tick is its whole say, exactly as it is for a battery gun.
+                    // Otherwise it keeps the mark it was already tracking, or takes a
+                    // fresh one (see SelectMunition), passing its current target so a
+                    // slew in progress is not abandoned.
+                    entt::entity const munition =
+                        weapon.enabled ? SelectMunition(registry, weapon.target, ownFaction, mountPos,
+                                                        arcCentre, weapon.range, weapon.arcHalfAngle,
+                                                        claimedMunitions)
+                                       : entt::null;
+                    weapon.target = munition;
+                    if (munition == entt::null) {
+                        weapon.acquired = false;
+                        continue;
+                    }
+                    // Take this missile off the table for the rest of the battery,
+                    // so the next mount engages the next threat rather than piling
+                    // onto this one. Claimed the moment it is locked — while the mount
+                    // is still slewing on, not only once it opens fire — since it is
+                    // committed to this mark either way.
+                    claimedMunitions.push_back(munition);
+
+                    // Train the barrel onto the missile so the drawn lay tracks it.
+                    // The hit itself does not depend on the lay (see below), so this
+                    // is purely what the arc draw shows; it reuses the gun's own
+                    // slew-toward-and-clamp-to-the-arc rule.
+                    auto& warhead = registry.get<Projectile>(munition);
+                    weapon.aimWorld = warhead.position;
+                    weapon.spreadRadiusM = 0.0f;
+                    float const aimWorldBearing = std::atan2(warhead.position.y - mountPos.y,
+                                                             warhead.position.x - mountPos.x);
+                    weapon.acquired = TrainBarrel(weapon, aimWorldBearing, arcCentre, dt);
+
+                    // Fire only once the barrel has trained onto the missile, so
+                    // the mount has to slew onto a new mark before it can engage it
+                    // — the turn rate is a real acquisition delay, and a crosser fast
+                    // enough to out-run the traverse is never settled on and leaks
+                    // through. The burst itself is resolved hitscan (a CIWS throws
+                    // far too dense a stream to model as separate shells), chipping
+                    // the warhead's health directly rather than flying a shot down
+                    // the bore; gating it on the lay is what makes the traverse
+                    // matter despite the hit not travelling.
+                    if (!weapon.acquired || weapon.cooldownRemaining > 0.0f) {
+                        continue;
+                    }
+                    weapon.cooldownRemaining = weapon.cooldown;
+                    audio.Play(weapon.fireSound, mountPos);
+                    shake.Add(weapon.fireShakeM, mountPos);
+
+                    // Accuracy. Rather than sample a point in the spread disc and
+                    // test overlap the way a gun's shell does, the hitscan burst
+                    // takes the analytic odds of that same scatter landing on the
+                    // missile: at the target's range the spread opens a disc of
+                    // radius dist*tan(spread), and the chance a round falls within
+                    // the missile's own radius of the aim point is the ratio of the
+                    // two — a certainty point-blank (the disc tighter than the
+                    // missile) and thinning with range, so a CIWS only truly answers
+                    // a missile as it closes. spread 0 is a perfect gun. A miss still
+                    // spends the burst — the gun fired — it simply does no damage.
+                    //
+                    // The health > 0 test both spares a munition authored with none
+                    // (impervious by design) and destroys one exactly once, however
+                    // many mounts fire on it this tick — once past zero it no longer
+                    // qualifies. A downed warhead cooks off where it was hit: its own
+                    // impact report and shake, plus a splash, all carried on the
+                    // munition so they play whether or not the gun that killed it
+                    // survives — the same trade every shot already makes.
+                    if (warhead.health > 0.0f) {
+                        float const dist = (warhead.position - mountPos).Length();
+                        float const discRadius = dist * std::tan(weapon.spread);
+                        float const hitChance =
+                            discRadius <= warhead.radiusM ? 1.0f : warhead.radiusM / discRadius;
+                        if (RandomUnit() < hitChance) {
+                            warhead.health -= weapon.damage;
+                            if (warhead.health <= 0.0f) {
+                                audio.Play(warhead.impactSound, warhead.position);
+                                shake.Add(warhead.impactShakeM, warhead.position);
+                                splashes.push_back(Splash{ warhead.position, 0.0f, warhead.radiusM });
+                                downedMunitions.push_back(munition);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
                 // Advance the mount's fire timers. A gun counts down one barrel's
                 // cooldown; a launcher counts down the interval between tube
                 // launches and reloads spent tubes one at a time (reloadTimer is
@@ -364,9 +577,6 @@ namespace naval {
                 // never leaves the arc.
                 float const aimWorldBearing = std::atan2(weapon.aimWorld.y - mountPos.y,
                                                          weapon.aimWorld.x - mountPos.x);
-                float const desiredAim =
-                    weapon.bearing + std::clamp(WrapPi(aimWorldBearing - arcCentre),
-                                                -weapon.arcHalfAngle, weapon.arcHalfAngle);
 
                 // A launcher with no turn rate is a fixed tube — a canister bolted
                 // at its mount bearing that never slews, leaving the munition to
@@ -375,29 +585,17 @@ namespace naval {
                 // and counts as acquired at once. A launcher with a turn rate
                 // trains its rail like a gun; a gun always trains, and there a zero
                 // rate still means an instant traverse rather than a fixed barrel.
+                //
+                // Training runs before the fire gates below, so a mount merely
+                // holding — or switched out — still slews onto its mark; with no
+                // target the loop already continued, so it simply holds its last lay
+                // rather than recentring. A barrel that cannot keep pace with a fast
+                // crosser reads as slewing, which is the truth of it.
                 if (weapon.kind != WeaponKind::Gun && weapon.turnRate <= 0.0f) {
                     weapon.aimBearing = weapon.bearing;
                     weapon.acquired = true;
                 } else {
-                    // Train the barrel/rail toward the aim point, bounded by the
-                    // turn rate and clamped to the arc. Runs before the fire gates
-                    // below, so a mount merely holding — or switched out — still
-                    // slews onto its mark; with no target the loop already
-                    // continued, so it simply holds its last lay rather than
-                    // recentring. A rate of zero or less trains in one step.
-                    float const trainDelta = WrapPi(desiredAim - weapon.aimBearing);
-                    float const trainStep = weapon.turnRate * dt;
-                    bool const snap = weapon.turnRate <= 0.0f || std::abs(trainDelta) <= trainStep;
-                    weapon.aimBearing += snap ? trainDelta : std::copysign(trainStep, trainDelta);
-
-                    // Acquired once the lay sits within a hair of the aim: snapping
-                    // onto it this tick, or holding within tolerance of a moving
-                    // solution. A barrel that cannot keep pace with a fast crosser
-                    // reads as slewing, which is the truth of it. Gates standing
-                    // fire below as well as the readout.
-                    constexpr float kAcquiredToleranceRad = 0.017f; // ~1 degree
-                    weapon.acquired =
-                        std::abs(WrapPi(desiredAim - weapon.aimBearing)) <= kAcquiredToleranceRad;
+                    weapon.acquired = TrainBarrel(weapon, aimWorldBearing, arcCentre, dt);
                 }
 
                 // Everything above happens whether or not the ship is shooting,
@@ -525,6 +723,7 @@ namespace naval {
                     }
                     shot.remaining = weapon.range;
                     shot.guidance = Guidance::Guided;
+                    shot.health = weapon.munitionHealth; // what point defence must chew through
                     shot.homingTarget = target;
                     shot.maxSpeed = weapon.munitionMaxSpeed;
                     shot.acceleration = weapon.munitionAcceleration;
@@ -560,6 +759,15 @@ namespace naval {
 
         for (auto const& shot : spawned) {
             registry.emplace<Projectile>(registry.create(), shot);
+        }
+        // Point defence's leavings: remove the munitions it shot down and drop the
+        // splash each left. After the shooter loop for the same reason as the
+        // shells above — nothing touches a pool while a view over it is live.
+        for (auto munition : downedMunitions) {
+            registry.destroy(munition);
+        }
+        for (auto const& splash : splashes) {
+            registry.emplace<Splash>(registry.create(), splash);
         }
     }
 

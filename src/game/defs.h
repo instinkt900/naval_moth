@@ -69,6 +69,11 @@ namespace naval::defs {
         float spread = 0.0f;      // radians (loaded from spreadDegrees); half-angle of the spread disc over the target
         int barrelCount = 1;      // barrels fired per trigger, each spawning its own projectile; 1 is an ordinary single-barrel gun
         float barrelSeparationM = 0.0f; // metres between adjacent barrels, set abreast and centred on the mount; only meaningful with barrelCount > 1
+        // A point-defence gun (a CIWS) answers inbound guided air munitions rather
+        // than ships: it ignores the ship's fire order and, while enabled, lays on
+        // the nearest incoming missile in its arc and shoots it down. Optional; a
+        // gun that omits it is an ordinary anti-ship battery.
+        bool pointDefense = false;
         std::string fireSound;    // id into the sound table; empty = silent
         float fireShakeM = 0.0f;  // metres of camera shake at full effect as it fires; 0 = none
     };
@@ -130,6 +135,11 @@ namespace naval::defs {
         float initialSpeed = 0.0f; // m/s it leaves a rail/canister at, along the launch bearing before acceleration builds; a VLS ignores it (leaves at rest)
         float damage = 0.0f;       // hit points removed from a hull it strikes
         float turnRate = 0.0f;     // radians/second its heading can steer toward the target (loaded from turnRateDegrees)
+        // Warhead health a point-defence gun must whittle down to knock this
+        // munition out of the sky. Air munitions only — a torpedo runs below the
+        // reach of these guns. 0 (the default) leaves the munition impervious to
+        // point defence: a deliberate lever for a round too fast or small to stop.
+        float health = 0.0f;
         float radiusM = 0.0f;      // draw radius, metres
         moth_ui::Color color;
         std::string impactSound; // id into the sound table; empty = silent

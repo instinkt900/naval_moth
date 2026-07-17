@@ -36,25 +36,36 @@ namespace naval {
         }
 
         // The armament slot whose arc costs the least turn to bring onto a foe at
-        // world bearing `beta` from a hull heading `shipAngle`. A weapon's arc is
-        // centred (in world) at shipAngle + bearing, so centring the foe wants
-        // shipAngle = beta - bearing; the cost is how far the bow must swing to get
-        // there. Sticks with `current` unless a rival beats it by `switchMargin`,
-        // so the ship commits to one battery instead of flipping port/starboard as
-        // the foe drifts across the bow.
+        // world bearing `beta` from a hull heading `shipAngle`, or -1 if the ship
+        // has no gun that engages ships. A weapon's arc is centred (in world) at
+        // shipAngle + bearing, so centring the foe wants shipAngle = beta - bearing;
+        // the cost is how far the bow must swing to get there. Sticks with `current`
+        // unless a rival beats it by `switchMargin`, so the ship commits to one
+        // battery instead of flipping port/starboard as the foe drifts across the
+        // bow. Point-defence mounts are skipped throughout: they answer inbound
+        // missiles, not ships, so presenting their arc would only steer the hull to
+        // no purpose (and stand off at a CIWS's short range).
         int ChooseWeapon(std::vector<Weapon> const& weapons, float beta, float shipAngle,
                          int current, float switchMargin) {
             auto turnCost = [&](Weapon const& w) {
                 return std::abs(WrapPi((beta - w.bearing) - shipAngle));
             };
             int const count = static_cast<int>(weapons.size());
-            int cheapest = 0;
-            for (int i = 1; i < count; ++i) {
-                if (turnCost(weapons[i]) < turnCost(weapons[cheapest])) {
+            int cheapest = -1;
+            for (int i = 0; i < count; ++i) {
+                if (weapons[i].pointDefense) {
+                    continue;
+                }
+                if (cheapest < 0 || turnCost(weapons[i]) < turnCost(weapons[cheapest])) {
                     cheapest = i;
                 }
             }
-            if (current < 0 || current >= count) {
+            if (cheapest < 0) {
+                return -1; // nothing but point defence; no battery to present
+            }
+            // A stale index that has landed on a point-defence mount is treated as
+            // no prior choice, so the hysteresis never anchors to a CIWS.
+            if (current < 0 || current >= count || weapons[current].pointDefense) {
                 return cheapest;
             }
             if (cheapest != current &&
@@ -131,6 +142,9 @@ namespace naval {
 
             aggro.weaponIndex = ChooseWeapon(armament.weapons, beta, shipAngle,
                                              aggro.weaponIndex, tuning.switchMarginRad);
+            if (aggro.weaponIndex < 0) {
+                continue; // only point defence aboard; nothing to steer a battery onto
+            }
             Weapon const& weapon = armament.weapons[aggro.weaponIndex];
 
             // Standoff comes from the chosen weapon's reach, so a long-ranged gun

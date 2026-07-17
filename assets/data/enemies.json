@@ -4,5 +4,11 @@
     },
     "raider": {
         "hull": "armidale"
+    },
+    "escort": {
+        "hull": "frigate"
+    },
+    "picket": {
+        "hull": "picket"
     }
 }

@@ -76,7 +76,13 @@ namespace naval {
                 b2Vec2 const point{ m_camera.center.x + (radius * std::cos(angle)),
                                     m_camera.center.y + (radius * std::sin(angle)) };
                 if (m_terrain.IsWater(point, kClearanceM)) {
-                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, m_audio, "raider", point);
+                    // Debug scenario: a ring of single-launcher pickets, so only one
+                    // weapon type is ever in the air and the missile/CIWS exchange is
+                    // easy to read one shot at a time. For a full fight, swap this for
+                    // the varied fleet — `i < 2 ? "escort" : "raider"`, missile-armed
+                    // frigates with their own point defence among gun-only raiders.
+                    char const* const enemyId = "picket";
+                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, m_audio, enemyId, point);
                     // Point each enemy in a random direction so they aren't all
                     // bow-up; the spawn point is kept, only the heading changes.
                     m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
@@ -253,6 +259,11 @@ namespace naval {
         }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
         DrawProjectiles(m_graphics, m_registry, m_camera);
+
+        // Point-defence tracer streams, over the missiles they are cutting down.
+        for (auto ship : m_registry.view<Physics, Armament>()) {
+            DrawPointDefenseFire(m_graphics, m_registry, m_camera, ship);
+        }
 
         // Debug spread previews on top: a line to each enabled weapon's target
         // and the disc its shots may land within.
@@ -578,15 +589,46 @@ namespace naval {
             ImGui::PopID();
         };
 
-        // Guns and launchers are listed apart, each under its own heading, so the
-        // battery reads as two systems — the gun line and the munition cells —
-        // rather than one mixed list. A heading shows only if the ship carries
-        // that kind.
-        auto drawGroup = [&](char const* heading, bool wantGun) {
+        // A point-defence mount's row is stripped down to what it actually offers:
+        // the enable tick and its name, then a read-only status. It answers inbound
+        // missiles on its own and stands outside the fire order, so there is no
+        // salvo, no spread preview, and no fire button to show — the tick is the
+        // captain's whole say. Status reads "off" when switched out, then, once it
+        // has a missile, "tracking" while the mount is still swinging onto it and
+        // "engaging" once trained and firing — the distinction the turn rate makes,
+        // since a mount only scores once acquired (see combat_system). "searching"
+        // otherwise.
+        auto drawPointDefenseRow = [&](std::size_t i) {
+            ImGui::Separator();
+            Weapon& weapon = armament->weapons[i];
+            ImGui::PushID(static_cast<int>(i));
+
+            ImGui::Checkbox("##enable", &weapon.enabled);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
+
+            bool const laid = weapon.target != entt::null && m_registry.valid(weapon.target);
+            char const* status = "searching";
+            if (!weapon.enabled) {
+                status = "off";
+            } else if (laid) {
+                status = weapon.acquired ? "engaging" : "tracking";
+            }
+            ImGui::TextUnformatted(status);
+
+            ImGui::PopID();
+        };
+
+        // Guns, launchers and point defence are listed apart, each under its own
+        // heading, so the battery reads as distinct systems — the gun line, the
+        // munition cells, and the close-in shield — rather than one mixed list. A
+        // heading shows only if the ship carries that kind. The predicate keeps
+        // point-defence guns out of the plain gun list even though they are Gun
+        // kind, since they answer to a different control entirely.
+        auto drawGroup = [&](char const* heading, auto&& want, auto&& row) {
             bool headed = false;
             for (std::size_t i = 0; i < armament->weapons.size(); ++i) {
-                bool const isGun = armament->weapons[i].kind == WeaponKind::Gun;
-                if (isGun != wantGun) {
+                if (!want(armament->weapons[i])) {
                     continue;
                 }
                 if (!headed) {
@@ -594,11 +636,15 @@ namespace naval {
                     ImGui::TextUnformatted(heading);
                     headed = true;
                 }
-                drawRow(i);
+                row(i);
             }
         };
 
-        drawGroup("Guns", true);
-        drawGroup("Launchers", false);
+        drawGroup(
+            "Guns", [](Weapon const& w) { return w.kind == WeaponKind::Gun && !w.pointDefense; }, drawRow);
+        drawGroup(
+            "Launchers", [](Weapon const& w) { return w.kind != WeaponKind::Gun; }, drawRow);
+        drawGroup(
+            "Point Defense", [](Weapon const& w) { return w.pointDefense; }, drawPointDefenseRow);
     }
 }

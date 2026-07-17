@@ -49,4 +49,11 @@ namespace naval {
 
     // Every projectile in flight.
     void DrawProjectiles(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera);
+
+    // A ship's point-defence fire: a flickering tracer stream from each CIWS mount
+    // that is trained on an inbound missile out to that missile. The gun is hitscan
+    // (no shell entities exist to draw), so this stands in for the rounds in the
+    // air — drawn only while a mount is actually engaging, not while it is still
+    // slewing onto a mark. Nothing for a ship with no point defence, or none firing.
+    void DrawPointDefenseFire(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 }

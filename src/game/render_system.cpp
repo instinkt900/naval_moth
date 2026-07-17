@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <random>
 
 namespace naval {
     namespace {
@@ -27,6 +28,8 @@ namespace naval {
         const moth_ui::Color kSpreadColor{ 0.95f, 0.85f, 0.35f, 0.6f };           // debug spread preview (aim line + disc)
         const moth_ui::Color kTargetRingColor{ 0.35f, 0.90f, 0.40f, 0.85f };      // designated contact, no gun bearing on it
         const moth_ui::Color kTargetRingArmedColor{ 0.95f, 0.25f, 0.25f, 0.90f }; // designated contact, under the guns
+        const moth_ui::Color kCiwsTracerColor{ 1.00f, 0.85f, 0.35f, 0.9f };       // point-defence tracer rounds
+        const moth_ui::Color kCiwsMuzzleColor{ 1.00f, 0.95f, 0.70f, 1.0f };       // point-defence muzzle flash and target sparkle
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -263,7 +266,18 @@ namespace naval {
             moth_ui::Color const arcColor = weapon.hasTarget ? kArcActiveColor : kArcEnabledColor;
             graphics.SetColor(arcColor);
 
+            // A full-circle arc (an omnidirectional mount — a VLS, or a launcher
+            // authored at 360) draws as a plain ring. The two radial edges would
+            // land on the same bearing and leave a stray spoke from the mount to
+            // the rim, and with no arc bound there is nothing for a barrel-lay line
+            // to sit within either, so both are dropped as pure noise.
+            constexpr float kFullCircle = (2.0f * b2_pi) - 0.01f;
             float const arcAngle = 2.0f * weapon.arcHalfAngle;
+            if (arcAngle >= kFullCircle) {
+                DrawCircle(graphics, originPx, rangePx);
+                continue;
+            }
+
             graphics.DrawLineF(originPx, edge(start));               // near radial edge
             DrawSweep(graphics, originPx, rangePx, start, arcAngle); // the outer sweep between them
             graphics.DrawLineF(originPx, edge(start + arcAngle));    // far radial edge
@@ -273,7 +287,7 @@ namespace naval {
             // mark (see combat_system). The arc's own hue, but far fainter — a
             // thin hint of the lay, not a second bright edge competing with the
             // arc it sits inside.
-            graphics.SetColor(moth_ui::Color{ arcColor.r, arcColor.g, arcColor.b, arcColor.a * 0.2f });
+            graphics.SetColor(moth_ui::Color{ arcColor.r, arcColor.g, arcColor.b, arcColor.a * 0.8f });
             graphics.DrawLineF(originPx, edge(shipAngle + weapon.aimBearing));
         }
 
@@ -407,5 +421,73 @@ namespace naval {
             graphics.DrawFillPolygonF(shape.data(), shape.size());
             graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         }
+    }
+
+    void DrawPointDefenseFire(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
+        auto const* armament = registry.try_get<Armament>(ship);
+        if (armament == nullptr) {
+            return;
+        }
+        b2Body* body = registry.get<Physics>(ship).body;
+
+        // Per-frame jitter is what turns a static line into a chattering stream, so
+        // the tracer is rebuilt from fresh random samples every frame rather than
+        // carrying any state. One rng for the whole pass.
+        static std::mt19937 rng{ std::random_device{}() };
+        std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+
+        for (auto const& weapon : armament->weapons) {
+            // Only a mount that is actually engaging — trained (acquired) on a live
+            // inbound munition — throws rounds. One still slewing onto its mark, or
+            // switched out, draws nothing; the hitscan gun spawns no shells, so this
+            // is the only thing standing in for the stream (see combat_system).
+            if (!weapon.pointDefense || !weapon.enabled || !weapon.acquired ||
+                weapon.target == entt::null || !registry.valid(weapon.target)) {
+                continue;
+            }
+
+            moth_ui::FloatVec2 const muzzlePx = camera.WorldToScreen(body->GetWorldPoint(weapon.mountOffset));
+            moth_ui::FloatVec2 const targetPx = camera.WorldToScreen(weapon.aimWorld);
+            moth_ui::FloatVec2 const delta{ targetPx.x - muzzlePx.x, targetPx.y - muzzlePx.y };
+            float const len = std::sqrt((delta.x * delta.x) + (delta.y * delta.y));
+            if (len < 1.0f) {
+                continue;
+            }
+            moth_ui::FloatVec2 const dir{ delta.x / len, delta.y / len };
+            moth_ui::FloatVec2 const perp{ -dir.y, dir.x };
+
+            // A few tracer rounds strung along the line of fire: each a short bright
+            // dash at a random distance out, nudged off-axis so the burst reads as a
+            // cone of fire rather than a laser, and at a random brightness so the
+            // whole stream flickers. All in screen pixels so it stays legible at any
+            // zoom — a stand-in for rounds, not a physical object measured in metres.
+            constexpr int kTracerCount = 3;
+            constexpr float kDashPx = 9.0f;
+            constexpr float kJitterPx = 3.0f;
+            for (int t = 0; t < kTracerCount; ++t) {
+                float const s = unit(rng) * std::max(0.0f, len - kDashPx);
+                float const j = (unit(rng) - 0.5f) * 2.0f * kJitterPx;
+                moth_ui::FloatVec2 const a{ muzzlePx.x + (dir.x * s) + (perp.x * j),
+                                            muzzlePx.y + (dir.y * s) + (perp.y * j) };
+                moth_ui::FloatVec2 const b{ a.x + (dir.x * kDashPx), a.y + (dir.y * kDashPx) };
+                graphics.SetColor(moth_ui::Color{ kCiwsTracerColor.r, kCiwsTracerColor.g,
+                                                  kCiwsTracerColor.b, kCiwsTracerColor.a * (0.5f + (0.5f * unit(rng))) });
+                graphics.DrawLineF(a, b);
+            }
+
+            // A muzzle flash at the mount and a spark where the rounds are striking,
+            // both pulsing with the same per-frame flicker as the dashes.
+            graphics.SetColor(moth_ui::Color{ kCiwsMuzzleColor.r, kCiwsMuzzleColor.g,
+                                              kCiwsMuzzleColor.b, 0.6f + (0.4f * unit(rng)) });
+            graphics.DrawFillCircleF(muzzlePx, 2.0f + (unit(rng) * 1.5f));
+            graphics.SetColor(moth_ui::Color{ kCiwsTracerColor.r, kCiwsTracerColor.g,
+                                              kCiwsTracerColor.b, 0.5f + (0.5f * unit(rng)) });
+            graphics.DrawFillCircleF(targetPx, 1.5f + (unit(rng) * 1.5f));
+        }
+
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 }

@@ -61,6 +61,7 @@ namespace naval {
                 defs::Gun const& gunDef = db.GetGun(mount.gun);
                 defs::Projectile const& projectileDef = db.GetProjectile(gunDef.projectile);
                 weapon.kind = WeaponKind::Gun;
+                weapon.pointDefense = gunDef.pointDefense;
                 weapon.name = gunDef.name;
                 weapon.arcHalfAngle = gunDef.arcHalfAngle;
                 weapon.turnRate = gunDef.turnRate;
@@ -115,14 +116,18 @@ namespace naval {
                 weapon.munitionMinRange = munitionDef.minRange;
                 weapon.munitionInitialSpeed = munitionDef.initialSpeed;
                 weapon.munitionWaterborne = munitionDef.medium == defs::Medium::Water;
+                weapon.munitionHealth = munitionDef.health;
                 weapon.fireSound = audio.Find(launcherDef.fireSound);
                 weapon.fireShakeM = launcherDef.fireShakeM;
             }
-            // The player's mounts start switched out, so opening an engagement is
-            // a deliberate act of ticking in the weapons wanted rather than the
-            // whole battery cutting loose at once. An enemy battery, which nothing
-            // toggles, stays enabled and fights in full.
-            weapon.enabled = faction != Faction::Player;
+            // The player's offensive mounts start switched out, so opening an
+            // engagement is a deliberate act of ticking in the weapons wanted
+            // rather than the whole battery cutting loose at once. Point defence
+            // is the exception: it is a standing, hands-off shield, so it comes up
+            // enabled even on the player's ship — a CIWS the captain has to switch
+            // on before the first missile arrives is a trap, not a control. An
+            // enemy battery, which nothing toggles, stays enabled and fights in full.
+            weapon.enabled = faction != Faction::Player || weapon.pointDefense;
             armament.weapons.push_back(weapon);
         }
         registry.emplace<Armament>(entity, std::move(armament));

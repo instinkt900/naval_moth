@@ -111,6 +111,9 @@ namespace naval::defs {
             g.barrelCount = j.value("barrelCount", 1);
             Require(g.barrelCount >= 1, "gun '" + id + "' barrelCount must be at least 1");
             g.barrelSeparationM = j.value("barrelSeparationM", 0.0f);
+            // Optional — a gun that omits it is an ordinary anti-ship battery; a
+            // point-defence gun instead answers inbound missiles (see combat_system).
+            g.pointDefense = j.value("pointDefense", false);
             g.fireSound = j.value("fireSound", std::string{});
             g.fireShakeM = j.value("fireShakeM", 0.0f);
             Require(g.fireShakeM >= 0.0f, "gun '" + id + "' fireShakeM must not be negative");
@@ -159,6 +162,9 @@ namespace naval::defs {
             m.initialSpeed = j.value("initialSpeed", 0.0f);
             m.damage = j.at("damage").get<float>();
             m.turnRate = j.at("turnRateDegrees").get<float>() * moth_ui::kDegToRad;
+            // Optional warhead health for point defence to chew through; 0 (the
+            // default) leaves the munition impossible to shoot down.
+            m.health = j.value("health", 0.0f);
             m.radiusM = j.at("radiusM").get<float>();
             m.color = ParseColor(j.at("color"));
             m.impactSound = j.value("impactSound", std::string{});
@@ -170,6 +176,7 @@ namespace naval::defs {
             Require(m.acceleration > 0.0f, "munition '" + id + "' acceleration must be positive");
             Require(m.maxSpeed > 0.0f, "munition '" + id + "' topSpeed must be positive");
             Require(m.initialSpeed >= 0.0f, "munition '" + id + "' initialSpeed must not be negative");
+            Require(m.health >= 0.0f, "munition '" + id + "' health must not be negative");
             Require(m.impactShakeM >= 0.0f, "munition '" + id + "' impactShakeM must not be negative");
             db.m_munitions.emplace(id, m);
         }
