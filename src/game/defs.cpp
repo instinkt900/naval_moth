@@ -117,7 +117,12 @@ namespace naval::defs {
             Require(type == "vls" || type == "launcher",
                     "launcher '" + id + "' type must be \"vls\" or \"launcher\"");
             l.type = type == "vls" ? LaunchType::VLS : LaunchType::Launcher;
-            l.cooldown = j.at("cooldown").get<float>();
+            l.tubes = j.at("tubes").get<int>();
+            l.launchInterval = j.at("launchInterval").get<float>();
+            l.reloadTime = j.at("reloadTime").get<float>();
+            Require(l.tubes >= 1, "launcher '" + id + "' tubes must be at least 1");
+            Require(l.launchInterval >= 0.0f, "launcher '" + id + "' launchInterval must not be negative");
+            Require(l.reloadTime > 0.0f, "launcher '" + id + "' reloadTime must be positive");
             // Arc and rail turn rate matter only to a trainable launcher; a VLS
             // is omnidirectional and never trains, so both are left at zero and
             // the runtime treats it as a full-circle arc.
@@ -136,8 +141,10 @@ namespace naval::defs {
             Missile m;
             m.name = j.value("name", id);
             m.range = j.at("range").get<float>();
+            m.minRange = j.value("minRange", 0.0f);
             m.acceleration = j.at("acceleration").get<float>();
             m.maxSpeed = j.at("topSpeed").get<float>();
+            m.initialSpeed = j.value("initialSpeed", 0.0f);
             m.damage = j.at("damage").get<float>();
             m.turnRate = j.at("turnRateDegrees").get<float>() * moth_ui::kDegToRad;
             m.radiusM = j.at("radiusM").get<float>();
@@ -146,8 +153,11 @@ namespace naval::defs {
             m.splashSound = j.value("splashSound", std::string{});
             m.impactShakeM = j.value("impactShakeM", 0.0f);
             Require(m.range > 0.0f, "missile '" + id + "' range must be positive");
+            Require(m.minRange >= 0.0f && m.minRange < m.range,
+                    "missile '" + id + "' minRange must be in [0, range)");
             Require(m.acceleration > 0.0f, "missile '" + id + "' acceleration must be positive");
             Require(m.maxSpeed > 0.0f, "missile '" + id + "' topSpeed must be positive");
+            Require(m.initialSpeed >= 0.0f, "missile '" + id + "' initialSpeed must not be negative");
             Require(m.impactShakeM >= 0.0f, "missile '" + id + "' impactShakeM must not be negative");
             db.m_missiles.emplace(id, m);
         }

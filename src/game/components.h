@@ -159,6 +159,27 @@ namespace naval {
         float missileMaxSpeed = 0.0f;     // m/s the missile accelerates up to
         float missileAcceleration = 0.0f; // m/s^2 gained in flight
         float missileTurnRate = 0.0f;     // rad/s its heading steers toward the target
+        float missileMinRange = 0.0f;     // m the missile must travel to arm; also the drawn dead-zone radius
+        float missileInitialSpeed = 0.0f; // m/s off the rail (Launcher kind); a VLS launches at rest
+
+        // Launcher tubes. A launcher fires from a pool of ready tubes rather than
+        // on a single cooldown: up to readyTubes launch in quick succession, each
+        // spaced by launchInterval, then spent tubes reload one at a time over
+        // reloadTime (reloadTimer is the one currently reloading; 0 = none). All
+        // zero for a gun, which uses cooldown above instead.
+        int tubeCount = 0;           // total tubes the launcher holds
+        int readyTubes = 0;          // tubes currently loaded and ready to fire
+        float launchInterval = 0.0f; // s enforced between successive launches
+        float launchTimer = 0.0f;    // s until the next launch is allowed
+        float reloadTime = 0.0f;     // s to reload one spent tube
+        float reloadTimer = 0.0f;    // s left on the tube reloading now; 0 = none in progress
+
+        // The player-set salvo size for this launcher and the launches still
+        // queued from the last salvo. salvoSize is how many a Salvo order
+        // releases (capped at the ready tubes when it fires); pending drains one
+        // per launch as the tubes ripple out. Launcher only.
+        int salvoSize = 1;
+        int pending = 0;
 
         // What the gun itself does as it fires, felt and heard at the mount.
         // The sound handle is resolved at spawn for the same reason as the stats
@@ -383,6 +404,13 @@ namespace naval {
         float maxSpeed = 0.0f;                  // m/s the missile accelerates up to
         float acceleration = 0.0f;              // m/s^2 gained in flight
         float turnRate = 0.0f;                  // rad/s the heading steers toward the target
+
+        // Warhead arming: distance (m) the missile must still travel before it is
+        // live. Counts down with the run; a strike while it is above zero is a dud
+        // — the missile is spent but does no damage and detonates nothing, which
+        // is what gives a launcher a minimum range. Zero (a ballistic shot, or a
+        // missile with no minimum range) is armed from the muzzle.
+        float armDistance = 0.0f;
 
         // What the shot does when it arrives, carried on the shot itself because
         // the weapon that fired it may be gone — sunk — by the time it lands.

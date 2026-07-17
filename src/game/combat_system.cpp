@@ -274,7 +274,26 @@ namespace naval {
             float const shipAngle = body->GetAngle();
 
             for (auto& weapon : shooters.get<Armament>(shooter).weapons) {
-                weapon.cooldownRemaining = std::max(0.0f, weapon.cooldownRemaining - dt);
+                // Advance the mount's fire timers. A gun counts down one barrel's
+                // cooldown; a launcher counts down the interval between tube
+                // launches and reloads spent tubes one at a time (reloadTimer is
+                // the tube in progress). Both run whether or not the mount has a
+                // target, so a battery reloads while idle.
+                if (weapon.kind == WeaponKind::Gun) {
+                    weapon.cooldownRemaining = std::max(0.0f, weapon.cooldownRemaining - dt);
+                } else {
+                    weapon.launchTimer = std::max(0.0f, weapon.launchTimer - dt);
+                    if (weapon.readyTubes < weapon.tubeCount && weapon.reloadTimer > 0.0f) {
+                        weapon.reloadTimer -= dt;
+                        if (weapon.reloadTimer <= 0.0f) {
+                            ++weapon.readyTubes;
+                            // Chain straight into the next tube so a spent battery
+                            // refills one by one rather than all at once.
+                            weapon.reloadTimer =
+                                weapon.readyTubes < weapon.tubeCount ? weapon.reloadTime : 0.0f;
+                        }
+                    }
+                }
 
                 float const arcCentre = shipAngle + weapon.bearing;
 
@@ -339,33 +358,46 @@ namespace naval {
                 weapon.aimWorld = targetPos + (flightTime * targetVel);
                 weapon.spreadRadiusM = (weapon.aimWorld - mountPos).Length() * std::tan(weapon.spread);
 
-                // Train the barrel toward the aim point, bounded by the gun's
-                // turn rate and clamped to its arc. Worked in bow-relative
-                // bearings so the lay rides the hull's own swing and never
-                // leaves the arc; a rate of zero or less trains in one step. This
-                // runs before the fire gates below, alongside the aim solution, so
-                // a gun that is merely holding — or switched out — still slews onto
-                // its mark. With no target the loop has already continued, so the
-                // barrel simply holds its last lay: a persistent aim, not one
-                // that recentres.
+                // Where the mount would point to lay onto the target, in
+                // bow-relative bearings so the lay rides the hull's own swing and
+                // never leaves the arc.
                 float const aimWorldBearing = std::atan2(weapon.aimWorld.y - mountPos.y,
                                                          weapon.aimWorld.x - mountPos.x);
                 float const desiredAim =
                     weapon.bearing + std::clamp(WrapPi(aimWorldBearing - arcCentre),
                                                 -weapon.arcHalfAngle, weapon.arcHalfAngle);
-                float const trainDelta = WrapPi(desiredAim - weapon.aimBearing);
-                float const trainStep = weapon.turnRate * dt;
-                bool const snap = weapon.turnRate <= 0.0f || std::abs(trainDelta) <= trainStep;
-                weapon.aimBearing += snap ? trainDelta : std::copysign(trainStep, trainDelta);
 
-                // Acquired once the lay sits within a hair of the aim: snapping
-                // onto it this tick, or holding within tolerance of a moving
-                // solution. A gun that cannot keep pace with a fast crosser reads
-                // as slewing, which is the truth of it. Gates standing fire below
-                // as well as the readout — a slewing gun holds its rounds.
-                constexpr float kAcquiredToleranceRad = 0.017f; // ~1 degree
-                weapon.acquired =
-                    std::abs(WrapPi(desiredAim - weapon.aimBearing)) <= kAcquiredToleranceRad;
+                // A launcher with no turn rate is a fixed tube — a canister bolted
+                // at its mount bearing that never slews, leaving the missile to
+                // manoeuvre onto the target once it is away (this is how a real
+                // canister launcher works). It holds its lay at the mount bearing
+                // and counts as acquired at once. A launcher with a turn rate
+                // trains its rail like a gun; a gun always trains, and there a zero
+                // rate still means an instant traverse rather than a fixed barrel.
+                if (weapon.kind != WeaponKind::Gun && weapon.turnRate <= 0.0f) {
+                    weapon.aimBearing = weapon.bearing;
+                    weapon.acquired = true;
+                } else {
+                    // Train the barrel/rail toward the aim point, bounded by the
+                    // turn rate and clamped to the arc. Runs before the fire gates
+                    // below, so a mount merely holding — or switched out — still
+                    // slews onto its mark; with no target the loop already
+                    // continued, so it simply holds its last lay rather than
+                    // recentring. A rate of zero or less trains in one step.
+                    float const trainDelta = WrapPi(desiredAim - weapon.aimBearing);
+                    float const trainStep = weapon.turnRate * dt;
+                    bool const snap = weapon.turnRate <= 0.0f || std::abs(trainDelta) <= trainStep;
+                    weapon.aimBearing += snap ? trainDelta : std::copysign(trainStep, trainDelta);
+
+                    // Acquired once the lay sits within a hair of the aim: snapping
+                    // onto it this tick, or holding within tolerance of a moving
+                    // solution. A barrel that cannot keep pace with a fast crosser
+                    // reads as slewing, which is the truth of it. Gates standing
+                    // fire below as well as the readout.
+                    constexpr float kAcquiredToleranceRad = 0.017f; // ~1 degree
+                    weapon.acquired =
+                        std::abs(WrapPi(desiredAim - weapon.aimBearing)) <= kAcquiredToleranceRad;
+                }
 
                 // Everything above happens whether or not the ship is shooting,
                 // so a held gun still tracks its mark and shows a live aim
@@ -377,19 +409,40 @@ namespace naval {
                 if (!weapon.enabled) {
                     continue;
                 }
-                // The trigger. Standing fire — the fire order or weapons-free —
-                // holds until the barrel has trained onto the mark, so a slewing
-                // gun keeps its rounds rather than throwing them wide of a lead
-                // it has not reached. A salvo is exempt: it is the deliberate
-                // "fire now", and spends its one round whether or not the gun has
-                // settled. What the gun is laid on, and how far it has trained,
-                // were both settled above; this only decides whether to shoot.
-                bool const standingFire = (order.firing || order.freeFire) && weapon.acquired;
-                if (!salvo && !standingFire) {
-                    continue;
-                }
-                if (weapon.cooldownRemaining > 0.0f) {
-                    continue;
+                if (weapon.kind == WeaponKind::Gun) {
+                    // The trigger. Standing fire — the fire order or weapons-free —
+                    // holds until the barrel has trained onto the mark, so a slewing
+                    // gun keeps its rounds rather than throwing them wide of a lead
+                    // it has not reached. A salvo is exempt: it is the deliberate
+                    // "fire now", and spends its one round whether or not the gun has
+                    // settled. What the gun is laid on, and how far it has trained,
+                    // were both settled above; this only decides whether to shoot.
+                    bool const standingFire = (order.firing || order.freeFire) && weapon.acquired;
+                    if (!salvo && !standingFire) {
+                        continue;
+                    }
+                    if (weapon.cooldownRemaining > 0.0f) {
+                        continue;
+                    }
+                } else {
+                    // A launcher triggers in whole tubes. A ship-wide salvo queues
+                    // this launcher's selected count (never more than are ready);
+                    // standing fire ripples tubes out as fast as the interval lets
+                    // it. Either way a launch needs a ready tube and the interval
+                    // since the last one elapsed — that spacing is what makes a
+                    // six-tube salvo six shots in quick succession rather than one
+                    // impossible instant. A launched missile homes, so unlike a gun
+                    // the launcher does not wait on the mount being 'acquired'.
+                    if (salvo) {
+                        weapon.pending = std::min(weapon.salvoSize, weapon.readyTubes);
+                    }
+                    bool const standingFire = order.firing || order.freeFire;
+                    if (weapon.pending <= 0 && !standingFire) {
+                        continue;
+                    }
+                    if (weapon.readyTubes <= 0 || weapon.launchTimer > 0.0f) {
+                        continue;
+                    }
                 }
 
                 Projectile shot;
@@ -433,20 +486,30 @@ namespace naval {
                     shot.velocity = weapon.muzzleVelocity * aim;
                     shot.remaining = std::clamp(toFire.Length(), 0.0f, weapon.range);
                 } else {
-                    // A launcher throws a guided missile: it leaves the cell at
-                    // rest and flies itself, turning onto the target and building
-                    // speed under its own power. Its reach is its self-contained
-                    // run distance — it homes until it strikes or runs that out.
-                    // The aim/train block above still ran, so a trainable launcher
-                    // held fire until its rail lined up; a VLS, arc-wide and never
-                    // training, was 'acquired' the moment a target bore.
-                    shot.velocity = b2Vec2{ 0.0f, 0.0f };
+                    // A launcher throws a guided missile that flies itself,
+                    // turning onto the target and building speed under its own
+                    // power. Its reach is its self-contained run distance — it
+                    // homes until it strikes or runs that out. How it leaves the
+                    // mount is the one thing the launcher type decides: a VLS pops
+                    // it up at rest (the vertical climb abstracted as acceleration
+                    // from zero), while a rail/canister launcher sends it out along
+                    // the launch bearing at the missile's initial speed, before its
+                    // own acceleration builds. Either way guidance owns it the
+                    // moment it is away.
+                    if (weapon.kind == WeaponKind::VLS) {
+                        shot.velocity = b2Vec2{ 0.0f, 0.0f };
+                    } else {
+                        float const railBearing = shipAngle + weapon.aimBearing;
+                        shot.velocity = weapon.missileInitialSpeed *
+                                        b2Vec2{ std::cos(railBearing), std::sin(railBearing) };
+                    }
                     shot.remaining = weapon.range;
                     shot.guidance = Guidance::Guided;
                     shot.homingTarget = target;
                     shot.maxSpeed = weapon.missileMaxSpeed;
                     shot.acceleration = weapon.missileAcceleration;
                     shot.turnRate = weapon.missileTurnRate;
+                    shot.armDistance = weapon.missileMinRange;
                 }
                 spawned.push_back(shot);
 
@@ -455,7 +518,22 @@ namespace naval {
                 audio.Play(weapon.fireSound, mountPos);
                 shake.Add(weapon.fireShakeM, mountPos);
 
-                weapon.cooldownRemaining = weapon.cooldown;
+                if (weapon.kind == WeaponKind::Gun) {
+                    weapon.cooldownRemaining = weapon.cooldown;
+                } else {
+                    // Spend a tube: hold the next launch off by the interval, and
+                    // start it reloading behind any reload already in progress so
+                    // the pool refills one tube at a time. One drained from the
+                    // salvo queue, if this launch came from one.
+                    --weapon.readyTubes;
+                    weapon.launchTimer = weapon.launchInterval;
+                    if (weapon.reloadTimer <= 0.0f) {
+                        weapon.reloadTimer = weapon.reloadTime;
+                    }
+                    if (weapon.pending > 0) {
+                        --weapon.pending;
+                    }
+                }
             }
         }
 
@@ -510,8 +588,10 @@ namespace naval {
                 projectile.velocity = speed * b2Vec2{ std::cos(heading), std::sin(heading) };
             }
 
+            float const stepDist = dt * projectile.velocity.Length();
             projectile.position += dt * projectile.velocity;
-            projectile.remaining -= dt * projectile.velocity.Length();
+            projectile.remaining -= stepDist;
+            projectile.armDistance = std::max(0.0f, projectile.armDistance - stepDist);
 
             // Strike test first: if the shot overlaps a hull this tick it hits,
             // even if its fuze also came due — so a shot fuzed to the target's
@@ -519,6 +599,12 @@ namespace naval {
             entt::entity const hull = StruckHull(registry, projectile);
             if (hull != entt::null) {
                 expired.push_back(entity);
+                // A warhead still short of its arming distance is a dud: the shot
+                // is spent, but it detonates nothing — no damage, no sound, no
+                // shake — which is what a launcher's minimum range comes to.
+                if (projectile.armDistance > 0.0f) {
+                    continue;
+                }
                 audio.Play(projectile.impactSound, projectile.position);
                 shake.Add(projectile.impactShakeM, projectile.position);
                 // Apply damage only while the hull is still alive, so a hull is

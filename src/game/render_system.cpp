@@ -22,6 +22,7 @@ namespace naval {
         const moth_ui::Color kArcDisabledColor{ 0.45f, 0.45f, 0.45f, 0.30f }; // arc of a gun switched out of the battery
         const moth_ui::Color kArcEnabledColor{ 0.70f, 0.25f, 0.25f, 0.45f };  // arc of an armed gun with nothing bearing
         const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f };    // arc with a target in it
+        const moth_ui::Color kDeadZoneColor{ 0.85f, 0.15f, 0.15f, 0.12f };    // launcher minimum range: missiles dud inside
         const moth_ui::Color kAggroRingColor{ 0.80f, 0.30f, 0.30f, 0.20f };       // aggro range, ship still patrolling
         const moth_ui::Color kAggroRingActiveColor{ 0.95f, 0.35f, 0.30f, 0.65f }; // aggro range once the ship has locked on
         const moth_ui::Color kSpreadColor{ 0.95f, 0.85f, 0.35f, 0.6f };           // debug spread preview (aim line + disc)
@@ -238,6 +239,14 @@ namespace naval {
                 continue;
             }
             moth_ui::FloatVec2 const originPx = camera.WorldToScreen(body->GetWorldPoint(weapon.mountOffset));
+
+            // A launcher's minimum range: the dead zone inside which its missiles
+            // strike before arming and do no damage. Drawn as a faint red disc at
+            // the mount so the player can read where a launch would be wasted.
+            if (weapon.missileMinRange > 0.0f) {
+                graphics.SetColor(kDeadZoneColor);
+                graphics.DrawFillCircleF(originPx, camera.MToPx(weapon.missileMinRange));
+            }
 
             float const rangePx = camera.MToPx(weapon.range);
             float const arcCentre = shipAngle + weapon.bearing;

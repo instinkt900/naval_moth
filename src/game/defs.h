@@ -88,7 +88,12 @@ namespace naval::defs {
     struct Launcher {
         std::string name;         // display name shown in game; defaults to the id if unspecified
         LaunchType type = LaunchType::VLS;
-        float cooldown = 0.0f;    // seconds between launches
+        // A launcher fires from a bank of tubes, not on a single cooldown: `tubes`
+        // ready rounds launch in quick succession spaced by `launchInterval`, then
+        // each spent tube reloads on its own over `reloadTime`, one at a time.
+        int tubes = 1;               // number of tubes, each a ready-to-fire missile
+        float launchInterval = 0.0f; // seconds enforced between successive launches
+        float reloadTime = 0.0f;     // seconds to reload one spent tube
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees); trainable type only
         float turnRate = 0.0f;    // radians/second the rail trains at (loaded from turnRateDegrees); trainable type only
         std::string fireSound;    // id into the sound table; empty = silent
@@ -104,8 +109,10 @@ namespace naval::defs {
     struct Missile {
         std::string name;          // display name; defaults to the id if unspecified
         float range = 0.0f;        // metres: launch range, and the run distance before self-destruct
+        float minRange = 0.0f;     // metres the warhead must travel to arm; a hit inside this does no damage
         float acceleration = 0.0f; // m/s^2 gained in flight, from rest toward maxSpeed
         float maxSpeed = 0.0f;     // m/s the missile accelerates up to (loaded from topSpeed)
+        float initialSpeed = 0.0f; // m/s it leaves a rail/canister at, along the launch bearing before acceleration builds; a VLS ignores it (leaves at rest)
         float damage = 0.0f;       // hit points removed from a hull it strikes
         float turnRate = 0.0f;     // radians/second its heading can steer toward the target (loaded from turnRateDegrees)
         float radiusM = 0.0f;      // draw radius, metres

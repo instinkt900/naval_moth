@@ -519,8 +519,21 @@ namespace naval {
             ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
             ImGui::SameLine();
             ImGui::Checkbox("Show arc", &weapon.showArc);
-            ImGui::SameLine();
-            ImGui::Checkbox("Show spread", &weapon.showSpread);
+            if (weapon.kind == WeaponKind::Gun) {
+                ImGui::SameLine();
+                ImGui::Checkbox("Show spread", &weapon.showSpread);
+            } else {
+                // How many missiles a Salvo order releases from this launcher: a
+                // scroll limited to the tubes ready to fire, since it can send no
+                // more than are loaded. Standing Fire ignores it and ripples the
+                // whole bank out regardless.
+                ImGui::SameLine();
+                int const maxLaunch = std::max(1, weapon.readyTubes);
+                ImGui::SetNextItemWidth(120.0f);
+                if (ImGui::InputInt("Salvo size", &weapon.salvoSize)) {
+                    weapon.salvoSize = std::clamp(weapon.salvoSize, 1, maxLaunch);
+                }
+            }
 
             // What this weapon is doing about the ship's order. Read-only apart
             // from the enable tick above: the order itself is the leading block's
@@ -549,8 +562,15 @@ namespace naval {
             // is cooling, firing or not — so an auto-firing battery still shows
             // each mount training and reloading rather than a bare "firing". A
             // weapon ordered to fire but still slewing reads "slewing", since with
-            // the trigger gated on acquisition it is holding its rounds.
-            if (weapon.enabled && weapon.cooldownRemaining > 0.0f) {
+            // the trigger gated on acquisition it is holding its rounds. A launcher
+            // shows its ready tubes instead, with the time to the next reloading in.
+            if (weapon.kind != WeaponKind::Gun) {
+                std::string line = fmt::format("{}  {}/{} tubes", status, weapon.readyTubes, weapon.tubeCount);
+                if (weapon.readyTubes < weapon.tubeCount && weapon.reloadTimer > 0.0f) {
+                    line += fmt::format("  reloading {:.1f}s", weapon.reloadTimer);
+                }
+                ImGui::TextUnformatted(line.c_str());
+            } else if (weapon.enabled && weapon.cooldownRemaining > 0.0f) {
                 ImGui::TextUnformatted(
                     fmt::format("{}  reloading {:.1f}s", status, weapon.cooldownRemaining).c_str());
             } else {

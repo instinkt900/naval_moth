@@ -80,22 +80,30 @@ namespace naval {
                 // A launcher's reach, damage and the shot's look/sound all come
                 // from the missile loaded at the mount; the launcher itself gives
                 // only how it aims (arc/train) and the launch report. A VLS is
-                // omnidirectional and never trains — a full-circle arc, no rail.
+                // omnidirectional — a full-circle arc; other launchers carry the
+                // arc they were authored with, and a zero turn rate means a fixed
+                // tube the missile manoeuvres out of (see combat_system).
                 defs::Launcher const& launcherDef = db.GetLauncher(mount.launcher);
                 defs::Missile const& missileDef = db.GetMissile(mount.missile);
                 weapon.kind = launcherDef.type == defs::LaunchType::VLS ? WeaponKind::VLS
                                                                         : WeaponKind::Launcher;
-                // A VLS arc is the whole circle, which draws as a heavy ring at
-                // missile range rather than a readable coverage wedge, so start it
-                // hidden — the player can still toggle it on. A trainable launcher
-                // has a real wedge worth showing, like a gun.
-                weapon.showArc = launcherDef.type != defs::LaunchType::VLS;
                 weapon.name = launcherDef.name;
                 weapon.arcHalfAngle =
                     launcherDef.type == defs::LaunchType::VLS ? b2_pi : launcherDef.arcHalfAngle;
                 weapon.turnRate = launcherDef.turnRate;
+                // A full-circle arc (a VLS, or a fixed launcher that engages any
+                // bearing) draws as a heavy ring at range rather than a readable
+                // wedge, so start it hidden — the player can toggle it on. A
+                // launcher with a real coverage wedge shows it, like a gun.
+                weapon.showArc = weapon.arcHalfAngle < (b2_pi - 1e-3f);
                 weapon.range = missileDef.range;
-                weapon.cooldown = launcherDef.cooldown;
+                // A launcher fires from a bank of tubes rather than on a cooldown:
+                // it starts fully loaded, and a salvo defaults to the whole bank.
+                weapon.tubeCount = launcherDef.tubes;
+                weapon.readyTubes = launcherDef.tubes;
+                weapon.launchInterval = launcherDef.launchInterval;
+                weapon.reloadTime = launcherDef.reloadTime;
+                weapon.salvoSize = launcherDef.tubes;
                 weapon.damage = missileDef.damage;
                 weapon.projectileRadiusM = missileDef.radiusM;
                 weapon.projectileColor = missileDef.color;
@@ -105,6 +113,8 @@ namespace naval {
                 weapon.missileMaxSpeed = missileDef.maxSpeed;
                 weapon.missileAcceleration = missileDef.acceleration;
                 weapon.missileTurnRate = missileDef.turnRate;
+                weapon.missileMinRange = missileDef.minRange;
+                weapon.missileInitialSpeed = missileDef.initialSpeed;
                 weapon.fireSound = audio.Find(launcherDef.fireSound);
                 weapon.fireShakeM = launcherDef.fireShakeM;
             }
