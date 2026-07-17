@@ -38,5 +38,16 @@
         "turnRateDegrees": 0.0,
         "fireSound": "launcher_basic",
         "fireShakeM": 0.4
+    },
+    "armored_box_launcher": {
+        "name": "Mk 143 Armored Box Launcher",
+        "type": "launcher",
+        "tubes": 8,
+        "launchInterval": 0.8,
+        "reloadTime": 30.0,
+        "arcDegrees": 360.0,
+        "turnRateDegrees": 0.0,
+        "fireSound": "launcher_basic",
+        "fireShakeM": 0.5
     }
 }

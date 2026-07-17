@@ -17,7 +17,7 @@ placeholders below are not a problem — those sounds simply don't play yet.
 | `gun_heavy` | `Pirate-ship-cannon-single-fire-332.wav` | `broadside_gun`, `mark-7` |
 | `gun_medium` | `Armored-tank-cannon-fire-single-shot-288.wav` | `mark-12` |
 | `impact_large` | `Large-explosion-or-cannon-in-a-close-perspective-450.wav` | `large_shell`, `ap_mark_8`, `shell_127` striking a hull |
-| `explosion` | `Large-explosion-or-cannon-in-a-close-perspective-450.wav` | `corsair`, `hulk` destroyed |
+| `explosion` | `Large-explosion-or-cannon-in-a-close-perspective-450.wav` | `armidale`, `hulk` destroyed |
 | `splash_large` | `Swimming-pool-dive-in-with-a-splash-414.wav` | `large_shell`, `ap_mark_8`, `shell_127` falling short |
 | `gun_light` | *(placeholder — no file yet)* | `auto_gun` |
 | `cannon` | *(placeholder — no file yet)* | `broadside_cannon` |

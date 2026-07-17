@@ -517,8 +517,6 @@ namespace naval {
             ImGui::Checkbox("##enable", &weapon.enabled);
             ImGui::SameLine();
             ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
-            ImGui::SameLine();
-            ImGui::Checkbox("Show arc", &weapon.showArc);
             if (weapon.kind == WeaponKind::Gun) {
                 ImGui::SameLine();
                 ImGui::Checkbox("Show spread", &weapon.showSpread);

@@ -44,5 +44,21 @@
         "color": [0.70, 0.85, 0.90, 1.0],
         "impactSound": "explosion",
         "impactShakeM": 1.2
+    },
+    "bgm109_tomahawk": {
+        "name": "BGM-109 Tomahawk",
+        "medium": "air",
+        "range": 5000.0,
+        "minRange": 800.0,
+        "acceleration": 55.0,
+        "topSpeed": 240.0,
+        "initialSpeed": 45.0,
+        "damage": 120.0,
+        "turnRateDegrees": 30.0,
+        "radiusM": 1.4,
+        "color": [0.90, 0.88, 0.82, 1.0],
+        "impactSound": "impact_large",
+        "splashSound": "splash_large",
+        "impactShakeM": 2.0
     }
 }

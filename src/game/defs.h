@@ -67,6 +67,8 @@ namespace naval::defs {
         float turnRate = 0.0f;    // radians/second the barrel trains at within its arc (loaded from turnRateDegrees); <= 0 trains instantly
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees)
         float spread = 0.0f;      // radians (loaded from spreadDegrees); half-angle of the spread disc over the target
+        int barrelCount = 1;      // barrels fired per trigger, each spawning its own projectile; 1 is an ordinary single-barrel gun
+        float barrelSeparationM = 0.0f; // metres between adjacent barrels, set abreast and centred on the mount; only meaningful with barrelCount > 1
         std::string fireSound;    // id into the sound table; empty = silent
         float fireShakeM = 0.0f;  // metres of camera shake at full effect as it fires; 0 = none
     };

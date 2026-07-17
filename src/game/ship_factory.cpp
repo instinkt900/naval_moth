@@ -66,6 +66,8 @@ namespace naval {
                 weapon.turnRate = gunDef.turnRate;
                 weapon.range = gunDef.range;
                 weapon.spread = gunDef.spread;
+                weapon.barrelCount = gunDef.barrelCount;
+                weapon.barrelSeparationM = gunDef.barrelSeparationM;
                 weapon.cooldown = gunDef.cooldown;
                 weapon.muzzleVelocity = gunDef.muzzleVelocity;
                 weapon.damage = gunDef.damage;
@@ -91,19 +93,16 @@ namespace naval {
                 weapon.arcHalfAngle =
                     launcherDef.type == defs::LaunchType::VLS ? b2_pi : launcherDef.arcHalfAngle;
                 weapon.turnRate = launcherDef.turnRate;
-                // A full-circle arc (a VLS, or a fixed launcher that engages any
-                // bearing) draws as a heavy ring at range rather than a readable
-                // wedge, so start it hidden — the player can toggle it on. A
-                // launcher with a real coverage wedge shows it, like a gun.
-                weapon.showArc = weapon.arcHalfAngle < (b2_pi - 1e-3f);
                 weapon.range = munitionDef.range;
                 // A launcher fires from a bank of tubes rather than on a cooldown:
-                // it starts fully loaded, and a salvo defaults to the whole bank.
+                // it starts fully loaded. A salvo defaults to a single tube so an
+                // accidental Salvo does not empty the whole bank; the player raises
+                // the salvo size deliberately when they want a heavier volley.
                 weapon.tubeCount = launcherDef.tubes;
                 weapon.readyTubes = launcherDef.tubes;
                 weapon.launchInterval = launcherDef.launchInterval;
                 weapon.reloadTime = launcherDef.reloadTime;
-                weapon.salvoSize = launcherDef.tubes;
+                weapon.salvoSize = 1;
                 weapon.damage = munitionDef.damage;
                 weapon.projectileRadiusM = munitionDef.radiusM;
                 weapon.projectileColor = munitionDef.color;

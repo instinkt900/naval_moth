@@ -19,7 +19,6 @@ namespace naval {
         const moth_ui::Color kBow{ 0.90f, 0.35f, 0.30f, 1.0f };
         const moth_ui::Color kTargetColor{ 0.95f, 0.85f, 0.40f, 1.0f };
         const moth_ui::Color kLineColor{ 0.55f, 0.65f, 0.75f, 1.0f };
-        const moth_ui::Color kArcDisabledColor{ 0.45f, 0.45f, 0.45f, 0.30f }; // arc of a gun switched out of the battery
         const moth_ui::Color kArcEnabledColor{ 0.70f, 0.25f, 0.25f, 0.45f };  // arc of an armed gun with nothing bearing
         const moth_ui::Color kArcActiveColor{ 0.95f, 0.55f, 0.35f, 0.9f };    // arc with a target in it
         const moth_ui::Color kDeadZoneColor{ 0.85f, 0.15f, 0.15f, 0.12f };    // launcher minimum range: munitions dud inside
@@ -228,14 +227,15 @@ namespace naval {
 
         // Alpha blend so the arc colours' alpha reads: the scene otherwise draws
         // opaque (BlendMode::Replace ignores alpha), which would show every arc
-        // at full strength and flatten the disabled/enabled/active distinction.
+        // at full strength and flatten the idle/active distinction.
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
 
-        // Each weapon's arc: two radial edges out to its range plus the outer
-        // sweep between them, brightening when a target sits inside. The arc
-        // originates from the mount's world position, not the hull centre.
+        // Each enabled weapon's arc: two radial edges out to its range plus the
+        // outer sweep between them, brightening when a target sits inside. The arc
+        // originates from the mount's world position, not the hull centre. A
+        // switched-out weapon draws nothing — its enable tick is the arc's toggle.
         for (auto const& weapon : armament->weapons) {
-            if (!weapon.showArc) {
+            if (!weapon.enabled) {
                 continue;
             }
             moth_ui::FloatVec2 const originPx = camera.WorldToScreen(body->GetWorldPoint(weapon.mountOffset));
@@ -257,16 +257,10 @@ namespace naval {
                                            originPx.y + (rangePx * std::sin(angle)) };
             };
 
-            // A switched-out gun draws a faded grey arc, an armed one a faint
-            // red; an armed gun brightens to the active colour with a target
-            // inside. A disabled gun stays grey even when something bears, since
-            // it will not shoot whatever comes into it.
-            moth_ui::Color arcColor = kArcEnabledColor;
-            if (!weapon.enabled) {
-                arcColor = kArcDisabledColor;
-            } else if (weapon.hasTarget) {
-                arcColor = kArcActiveColor;
-            }
+            // An enabled gun draws a faint red arc, brightening to the active
+            // colour with a target inside its arc. A switched-out gun draws no arc
+            // at all (skipped above), so the enable tick doubles as the arc toggle.
+            moth_ui::Color const arcColor = weapon.hasTarget ? kArcActiveColor : kArcEnabledColor;
             graphics.SetColor(arcColor);
 
             float const arcAngle = 2.0f * weapon.arcHalfAngle;

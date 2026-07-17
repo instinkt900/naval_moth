@@ -137,6 +137,8 @@ namespace naval {
         float spread = 0.0f;                // rad, half-angle of the spread disc over the target (radius = range * tan)
         float cooldown = 0.0f;              // s between shots
         float turnRate = 0.0f;              // rad/s the barrel trains at within its arc; <= 0 trains instantly
+        int barrelCount = 1;                // gun only: barrels fired per trigger, each its own projectile; 1 is a single-barrel gun
+        float barrelSeparationM = 0.0f;     // gun only: metres between adjacent barrels, abreast and centred on the mount
 
         // Shot stats, copied from the database so firing needs no lookup. Speed
         // and damage are the weapon's; the draw radius, colour and what it does
@@ -205,8 +207,9 @@ namespace naval {
         // path is armed unless a spawn decides otherwise.
         bool enabled = true;
 
-        // Player-facing draw toggles, one set per weapon.
-        bool showArc = true;     // draw this weapon's firing arc
+        // Player-facing draw toggle. The firing arc has no toggle of its own — it
+        // draws whenever the weapon is enabled (see render_system), so the enable
+        // tick doubles as the arc's switch.
         bool showSpread = false; // draw a debug preview of the spread disc over the current target
 
         // The contact this weapon is laid on, or entt::null if it can reach

@@ -64,26 +64,61 @@
             { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -40.0, "lateralM": 0.0 }
         ]
     },
-    "corsair": {
-        "name": "Corsair",
+    "iowa": {
+        "name": "Iowa-class Battleship",
+        "propulsion": {
+            "maxThrust": 30000.0,
+            "maxSpeedKnots": 33.0,
+            "turnRate": 0.03,
+            "powerDistance": 100.0,
+            "rudderRate": 0.2
+        },
+        "halfLengthM": 135.2,
+        "halfBeamM": 16.45,
+        "foreShoulder": [0.7, 0.4],
+        "aftShoulder": [0.95, 0.85],
+        "angularDamping": 3.0,
+        "color": [0.85, 0.82, 0.70, 1.0],
+        "mounts": [
+            { "type": "gun", "gun": "mark-7", "bearingDegrees": 0.0, "forwardM": 92.0, "lateralM": 0.0 },
+            { "type": "gun", "gun": "mark-7", "bearingDegrees": 0.0, "forwardM": 72.0, "lateralM": 0.0 },
+            { "type": "gun", "gun": "mark-7", "bearingDegrees": 180.0, "forwardM": -88.0, "lateralM": 0.0 },
+            { "type": "gun", "gun": "mark-12", "bearingDegrees": 90.0, "forwardM": 30.0, "lateralM": 13.0 },
+            { "type": "gun", "gun": "mark-12", "bearingDegrees": -90.0, "forwardM": 30.0, "lateralM": -13.0 },
+            { "type": "gun", "gun": "mark-12", "bearingDegrees": 90.0, "forwardM": -20.0, "lateralM": 13.0 },
+            { "type": "gun", "gun": "mark-12", "bearingDegrees": -90.0, "forwardM": -20.0, "lateralM": -13.0 },
+            { "type": "launcher", "launcher": "armored_box_launcher", "munition": "bgm109_tomahawk", "bearingDegrees": 90.0, "forwardM": 5.0, "lateralM": 9.0 },
+            { "type": "launcher", "launcher": "armored_box_launcher", "munition": "bgm109_tomahawk", "bearingDegrees": -90.0, "forwardM": 5.0, "lateralM": -9.0 },
+            { "type": "launcher", "launcher": "harpoon_mk141", "munition": "rgm84_harpoon", "bearingDegrees": 90.0, "forwardM": -50.0, "lateralM": 12.0 },
+            { "type": "launcher", "launcher": "harpoon_mk141", "munition": "rgm84_harpoon", "bearingDegrees": -90.0, "forwardM": -50.0, "lateralM": -12.0 },
+            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 0.0, "forwardM": 50.0, "lateralM": 8.0 },
+            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 0.0, "forwardM": 50.0, "lateralM": -8.0 },
+            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -60.0, "lateralM": 8.0 },
+            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -60.0, "lateralM": -8.0 }
+        ]
+    },
+    "armidale": {
+        "name": "Armidale-class Patrol Boat",
         "propulsion": {
             "maxThrust": 800.0,
-            "maxSpeedKnots": 20.0,
+            "maxSpeedKnots": 25.0,
             "turnRate": 0.15,
             "powerDistance": 100.0,
             "rudderRate": 0.8
         },
-        "halfLengthM": 30.0,
-        "halfBeamM": 5.0,
+        "halfLengthM": 28.4,
+        "halfBeamM": 4.85,
         "foreShoulder": [0.8, 0.55],
         "aftShoulder": [0.9, 0.8],
         "angularDamping": 3.0,
-        "health": 80.0,
+        "health": 60.0,
         "color": [0.80, 0.40, 0.35, 1.0],
         "explosionSound": "explosion",
         "explosionShakeM": 2.5,
         "mounts": [
-            { "type": "gun", "gun": "auto_gun", "bearingDegrees": 0.0, "forwardM": 18.0, "lateralM": 0.0 }
+            { "type": "gun", "gun": "typhoon_25", "bearingDegrees": 0.0, "forwardM": 18.0, "lateralM": 0.0 },
+            { "type": "gun", "gun": "m2_browning", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 4.0 },
+            { "type": "gun", "gun": "m2_browning", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -4.0 }
         ]
     },
     "hulk": {

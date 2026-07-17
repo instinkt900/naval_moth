@@ -468,24 +468,43 @@ namespace naval {
                     // direction it has yet to cover.
                     float const barrelBearing = shipAngle + weapon.aimBearing;
                     float const aimRange = (weapon.aimWorld - mountPos).Length();
-                    b2Vec2 const barrelPoint =
-                        mountPos + (aimRange * b2Vec2{ std::cos(barrelBearing), std::sin(barrelBearing) });
-                    b2Vec2 const firePoint = barrelPoint + RandomInDisc(weapon.spreadRadiusM);
+                    b2Vec2 const barrelDir{ std::cos(barrelBearing), std::sin(barrelBearing) };
 
-                    // Fire from the mount toward the scattered point, but never past
-                    // the weapon's arc: clamp the shot's bearing to the arc so a target
-                    // straddling the edge is still only shot at within it.
-                    b2Vec2 const toFire = firePoint - mountPos;
-                    float const aimDelta = WrapPi(std::atan2(toFire.y, toFire.x) - arcCentre);
-                    float const shotBearing =
-                        arcCentre + std::clamp(aimDelta, -weapon.arcHalfAngle, weapon.arcHalfAngle);
-                    b2Vec2 const aim{ std::cos(shotBearing), std::sin(shotBearing) };
+                    // A gun may fire several barrels abreast on one trigger (a
+                    // battleship turret), each a projectile of its own. They lie in a
+                    // line perpendicular to the bore, centred on the mount: the row
+                    // spans (count - 1) separations, and starting half that width to
+                    // one side puts an even count either side of the mount centreline
+                    // and lands an odd count's middle barrel on it. A single-barrel
+                    // gun runs this once at zero offset — exactly the old behaviour.
+                    b2Vec2 const abreast{ -std::sin(barrelBearing), std::cos(barrelBearing) };
+                    float const firstOffset = -0.5f * static_cast<float>(weapon.barrelCount - 1)
+                                              * weapon.barrelSeparationM;
+                    for (int barrel = 0; barrel < weapon.barrelCount; ++barrel) {
+                        float const offset = firstOffset + (static_cast<float>(barrel) * weapon.barrelSeparationM);
+                        b2Vec2 const muzzle = mountPos + (offset * abreast);
+                        b2Vec2 const barrelPoint = muzzle + (aimRange * barrelDir);
+                        b2Vec2 const firePoint = barrelPoint + RandomInDisc(weapon.spreadRadiusM);
 
-                    // Fuze the shot to the scattered point's range so it detonates
-                    // there — near the target — rather than flying on to max range.
-                    // Capped at the weapon's reach.
-                    shot.velocity = weapon.muzzleVelocity * aim;
-                    shot.remaining = std::clamp(toFire.Length(), 0.0f, weapon.range);
+                        // Fire from the barrel toward the scattered point, but never
+                        // past the weapon's arc: clamp the shot's bearing to the arc so
+                        // a target straddling the edge is still only shot at within it.
+                        b2Vec2 const toFire = firePoint - muzzle;
+                        float const aimDelta = WrapPi(std::atan2(toFire.y, toFire.x) - arcCentre);
+                        float const shotBearing =
+                            arcCentre + std::clamp(aimDelta, -weapon.arcHalfAngle, weapon.arcHalfAngle);
+                        b2Vec2 const aim{ std::cos(shotBearing), std::sin(shotBearing) };
+
+                        // Fuze the shot to the scattered point's range so it detonates
+                        // there — near the target — rather than flying on to max range.
+                        // Capped at the weapon's reach. Each barrel is its own shot,
+                        // spawned from its own muzzle with its own spread sample.
+                        Projectile barrelShot = shot;
+                        barrelShot.position = muzzle;
+                        barrelShot.velocity = weapon.muzzleVelocity * aim;
+                        barrelShot.remaining = std::clamp(toFire.Length(), 0.0f, weapon.range);
+                        spawned.push_back(barrelShot);
+                    }
                 } else {
                     // A launcher throws a guided munition that flies itself,
                     // turning onto the target and building speed under its own
@@ -512,8 +531,8 @@ namespace naval {
                     shot.turnRate = weapon.munitionTurnRate;
                     shot.armDistance = weapon.munitionMinRange;
                     shot.waterborne = weapon.munitionWaterborne;
+                    spawned.push_back(shot);
                 }
-                spawned.push_back(shot);
 
                 // Heard and felt at the mount rather than the ship's centre, so
                 // the guns of one hull are each placed where they actually sit.
@@ -560,14 +579,17 @@ namespace naval {
             // A guided munition steers and accelerates before it is integrated. It
             // turns its heading toward the homing target at its turn rate and ramps
             // speed toward maxSpeed, so it leaves the cell at rest and drives in. A
-            // target that sank or left the registry drops the lock: it holds its
-            // heading and keeps accelerating to the end of its run. Ballistic shots
-            // fall straight through with a constant velocity.
+            // target that began sinking, left the registry, or otherwise stopped
+            // being a live combatant drops the lock: the munition goes dumb, holds
+            // its heading and keeps accelerating to the end of its run rather than
+            // circling the wreck. (A sinking hull keeps its Physics body but loses
+            // its Combatant, so testing Combatant is what releases the lock the tick
+            // it dies.) Ballistic shots fall straight through with constant velocity.
             if (projectile.guidance == Guidance::Guided) {
                 float speed = projectile.velocity.Length();
                 bool const locked = projectile.homingTarget != entt::null &&
                                     registry.valid(projectile.homingTarget) &&
-                                    registry.all_of<Physics>(projectile.homingTarget);
+                                    registry.all_of<Physics, Combatant>(projectile.homingTarget);
                 // At (near) rest the heading is undefined, so seed it toward the
                 // target when locked, or hold due east when it has no mark to steer
                 // by; otherwise carry the current heading.

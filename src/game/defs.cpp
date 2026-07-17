@@ -103,6 +103,14 @@ namespace naval::defs {
             // works in a half-width to either side of the mount bearing.
             g.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad * 0.5f;
             g.spread = j.value("spreadDegrees", 0.0f) * moth_ui::kDegToRad;
+            // A multi-barrel gun (a battleship turret) fires every barrel on one
+            // trigger, each barrel its own projectile. Optional — a gun that omits
+            // these is a single barrel, exactly as guns behaved before. The barrels
+            // sit abreast, centred on the mount (see combat_system), so separation
+            // only matters with a count above one.
+            g.barrelCount = j.value("barrelCount", 1);
+            Require(g.barrelCount >= 1, "gun '" + id + "' barrelCount must be at least 1");
+            g.barrelSeparationM = j.value("barrelSeparationM", 0.0f);
             g.fireSound = j.value("fireSound", std::string{});
             g.fireShakeM = j.value("fireShakeM", 0.0f);
             Require(g.fireShakeM >= 0.0f, "gun '" + id + "' fireShakeM must not be negative");
