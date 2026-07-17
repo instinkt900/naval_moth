@@ -66,6 +66,7 @@ namespace naval::defs {
             s.file = assetsRoot / j.at("file").get<std::string>();
             s.volume = j.value("volume", 1.0f);
             s.pitchVariance = j.value("pitchVariance", 0.0f);
+            s.looping = j.value("looping", false);
             Require(s.volume >= 0.0f, "sound '" + id + "' volume must not be negative");
             Require(s.pitchVariance >= 0.0f && s.pitchVariance < 1.0f,
                     "sound '" + id + "' pitchVariance must be in [0,1)");

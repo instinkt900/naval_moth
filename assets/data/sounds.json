@@ -48,5 +48,10 @@
         "file": "audio/Rocket-launcher-single-shot-487.wav",
         "volume": 1.0,
         "pitchVariance": 0.1
+    },
+    "minigun_loop": {
+        "file": "audio/MinigunLoop.wav",
+        "volume": 0.4,
+        "looping": true
     }
 }

@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -37,14 +38,25 @@ namespace naval {
             ma_sound prototype;
             float volume = 1.0f;
             float pitchVariance = 0.0f;
+            bool looping = false;
         };
 
         // One playing sound. `active` says whether `sound` is initialised —
         // an inactive voice's ma_sound is untouched memory, so nothing may read
         // it.
+        //
+        // A looping voice is held alive by HoldLoop rather than by playing to its
+        // end: `looping` marks it as such, `key` is the emitter it belongs to so
+        // HoldLoop can find it again, and `refreshed` records that HoldLoop
+        // touched it this frame. Update reclaims a looping voice that went a frame
+        // unrefreshed, and a one-shot voice the ordinary way, when it reaches its
+        // end. All three are meaningless on an inactive voice.
         struct Voice {
             ma_sound sound;
             bool active = false;
+            bool looping = false;
+            bool refreshed = false;
+            uint64_t key = 0;
         };
 
         ma_engine engine;
@@ -70,6 +82,17 @@ namespace naval {
         Voice* FreeVoice() {
             for (auto& voice : voices) {
                 if (!voice.active) {
+                    return &voice;
+                }
+            }
+            return nullptr;
+        }
+
+        // The held loop belonging to emitter `key`, or nullptr if it has none
+        // playing — so HoldLoop can tell a fresh start from a refresh.
+        Voice* LoopVoice(uint64_t key) {
+            for (auto& voice : voices) {
+                if (voice.active && voice.looping && voice.key == key) {
                     return &voice;
                 }
             }
@@ -124,6 +147,7 @@ namespace naval {
             Impl::Sound& sound = m_impl->sounds.back();
             sound.volume = def.volume;
             sound.pitchVariance = def.pitchVariance;
+            sound.looping = def.looping;
 
             // MA_SOUND_FLAG_DECODE decodes the whole file up front into a
             // resource-manager buffer. That is what makes the prototype
@@ -210,16 +234,81 @@ namespace naval {
         ma_sound_start(&voice->sound);
     }
 
+    bool Audio::IsLooping(int sound) const {
+        return sound != kNoSound && m_impl->sounds[static_cast<size_t>(sound)].looping;
+    }
+
+    void Audio::HoldLoop(int sound, uint64_t key, b2Vec2 position) {
+        if (!m_impl->engineReady || sound == kNoSound) {
+            return;
+        }
+        auto& def = m_impl->sounds[static_cast<size_t>(sound)];
+
+        // A loop out of earshot takes no voice: an already-playing one is left
+        // unrefreshed for the next Update to reclaim, and simply restarts — loops
+        // begin cleanly — once it is back in range. Same early-out as Play, for
+        // the same reason: don't spend a voice on silence.
+        float const gain = m_impl->attenuation.GainAt(position);
+        if (gain <= 0.0f) {
+            return;
+        }
+
+        Impl::Voice* voice = m_impl->LoopVoice(key);
+        if (voice == nullptr) {
+            // Nothing playing for this emitter yet — start it: a copy of the
+            // prototype, set looping so it tiles until stopped rather than ending.
+            // Pitch is rolled once, here, not per frame — re-rolling it every tick
+            // would warble a held note.
+            voice = m_impl->FreeVoice();
+            if (voice == nullptr) {
+                return;
+            }
+            if (ma_sound_init_copy(&m_impl->engine, &def.prototype, MA_SOUND_FLAG_NO_SPATIALIZATION,
+                                   nullptr, &voice->sound) != MA_SUCCESS) {
+                return;
+            }
+            voice->active = true;
+            voice->looping = true;
+            voice->key = key;
+            ma_sound_set_looping(&voice->sound, MA_TRUE);
+            std::uniform_real_distribution<float> pitchDist(1.0f - def.pitchVariance,
+                                                            1.0f + def.pitchVariance);
+            ma_sound_set_pitch(&voice->sound, pitchDist(m_impl->rng));
+            ma_sound_start(&voice->sound);
+        }
+
+        // Refreshed this frame, so Update keeps it; and its gain and pan are
+        // re-applied from the emitter's current position, so a held loop tracks
+        // the ship and the camera — unlike a one-shot, which bakes both at the
+        // start (see Play for the pan derivation).
+        voice->refreshed = true;
+        float const across = position.x - m_impl->listener.x;
+        float const pan = kMaxPan * std::clamp(across / m_impl->listenerHalfWidthM, -1.0f, 1.0f);
+        ma_sound_set_volume(&voice->sound, def.volume * gain);
+        ma_sound_set_pan(&voice->sound, pan);
+    }
+
     void Audio::Update() {
         if (!m_impl->engineReady) {
             return;
         }
         // A voice holds a cloned data source, so a finished one has to be
         // uninitialised to give the memory back rather than just marked free.
+        // A one-shot is finished when it reaches its end; a held loop is finished
+        // when a frame went by without a HoldLoop to refresh it — the emitter
+        // stopped firing, lost its mark, or was destroyed.
         for (auto& voice : m_impl->voices) {
-            if (voice.active && ma_sound_at_end(&voice.sound)) {
+            if (!voice.active) {
+                continue;
+            }
+            bool const done =
+                voice.looping ? !voice.refreshed : bool(ma_sound_at_end(&voice.sound));
+            voice.refreshed = false;
+            if (done) {
                 ma_sound_uninit(&voice.sound);
                 voice.active = false;
+                voice.looping = false;
+                voice.key = 0;
             }
         }
     }

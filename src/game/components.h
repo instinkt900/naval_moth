@@ -201,6 +201,12 @@ namespace naval {
         // above: firing is a hot path and shouldn't be hashing strings. kNoSound
         // fires silently, and a shake of 0 fires without moving the camera.
         int fireSound = kNoSound;
+        // Whether fireSound is a looping sample (a minigun's whirr), resolved at
+        // spawn alongside the handle so the fire path branches on a bool rather
+        // than querying the bank. A looping fire sound is held for as long as the
+        // mount bears its mark instead of played once per round (see the
+        // point-defence branch of combat_system and Audio::HoldLoop).
+        bool fireSoundLoops = false;
         float fireShakeM = 0.0f;
 
         float cooldownRemaining = 0.0f; // s until it can fire again

@@ -27,6 +27,13 @@ namespace naval::defs {
         std::filesystem::path file;
         float volume = 1.0f;        // playback gain before distance is applied; 1 = as recorded
         float pitchVariance = 0.0f; // pitch is rolled in [1-v, 1+v] per play; 0 = always as recorded
+        // A seamless loop (a minigun's whirr) rather than a one-shot. A weapon
+        // whose fire sound is looping sustains it for as long as it bears its
+        // mark instead of firing one clip per round (see Audio::HoldLoop and the
+        // point-defence branch of combat_system); a one-shot sample must not set
+        // this, as it would never stop. Being a loop is a property of the
+        // recording, which is why it sits here and not on the weapon.
+        bool looping = false;
     };
 
     // A projectile's visuals — how a shot looks in flight — and the sounds it

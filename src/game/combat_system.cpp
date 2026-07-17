@@ -10,12 +10,22 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <random>
 #include <vector>
 
 namespace naval {
     namespace {
+        // A stable key identifying one mount's held loop sound: the shooter's id
+        // in the high bits, the weapon's slot in the low. Unique across a battery
+        // and steady tick to tick, which is what lets Audio match a minigun's
+        // whirr to the same voice each frame (see Audio::HoldLoop). The slot fits
+        // the low 16 bits — no ship carries anywhere near that many weapons.
+        uint64_t LoopKey(entt::entity shooter, size_t weaponIndex) {
+            return (static_cast<uint64_t>(entt::to_integral(shooter)) << 16) | weaponIndex;
+        }
+
         // A uniformly random point within a disc of the given radius centred on
         // the origin. The sqrt on the radius keeps the distribution even across
         // the area rather than clustering toward the centre.
@@ -429,7 +439,9 @@ namespace naval {
             b2Body* body = shooters.get<Physics>(shooter).body;
             float const shipAngle = body->GetAngle();
 
-            for (auto& weapon : shooters.get<Armament>(shooter).weapons) {
+            auto& weapons = shooters.get<Armament>(shooter).weapons;
+            for (size_t weaponIndex = 0; weaponIndex < weapons.size(); ++weaponIndex) {
+                auto& weapon = weapons[weaponIndex];
                 // Point defence is a world apart from anti-ship gunnery: it ignores
                 // the fire order entirely (no designated contact, no salvo, no free
                 // fire), answering only to its own enable tick, and it hunts inbound
@@ -483,6 +495,18 @@ namespace naval {
                                                              warhead.position.x - mountPos.x);
                     weapon.acquired = TrainBarrel(weapon, aimWorldBearing, arcCentre, dt);
 
+                    // A looping fire sound (a minigun's whirr) is held for as long
+                    // as the mount bears a mark and is trained on it, spanning the
+                    // gaps between the individual bursts below — so it spins up as
+                    // the gun settles on and stops the moment it loses the mark, is
+                    // switched out or the ship goes down (all of which simply stop
+                    // this call — see Audio::HoldLoop). Held here, before the
+                    // cooldown gate, because the whirr is continuous while the
+                    // per-burst one-shot below is not.
+                    if (weapon.acquired && weapon.fireSoundLoops) {
+                        audio.HoldLoop(weapon.fireSound, LoopKey(shooter, weaponIndex), mountPos);
+                    }
+
                     // Fire only once the barrel has trained onto the missile, so
                     // the mount has to slew onto a new mark before it can engage it
                     // — the turn rate is a real acquisition delay, and a crosser fast
@@ -496,7 +520,11 @@ namespace naval {
                         continue;
                     }
                     weapon.cooldownRemaining = weapon.cooldown;
-                    audio.Play(weapon.fireSound, mountPos);
+                    // A looping fire sound is held above for the whole engagement;
+                    // only a one-shot report fires per burst here.
+                    if (!weapon.fireSoundLoops) {
+                        audio.Play(weapon.fireSound, mountPos);
+                    }
                     shake.Add(weapon.fireShakeM, mountPos);
 
                     // Accuracy. Rather than sample a point in the spread disc and

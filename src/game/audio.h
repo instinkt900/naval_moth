@@ -2,6 +2,7 @@
 
 #include <box2d/box2d.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -78,8 +79,33 @@ namespace naval {
         // a shot that lands is over before a pan could track it anywhere.
         void Play(int sound, b2Vec2 position);
 
-        // Returns voices whose sound has finished to the pool. Call once per
-        // frame; without it the pool fills and later sounds are dropped.
+        // Whether `sound` is a looping sample (see defs::Sound::looping) — the
+        // question a caller asks to decide between Play and HoldLoop. Resolved
+        // once at spawn onto the weapon, like the handle itself, so the fire
+        // path never queries it. False for kNoSound.
+        bool IsLooping(int sound) const;
+
+        // Holds a looping `sound` playing for emitter `key`, starting it if idle
+        // and re-anchoring its volume and pan to `position` this frame. A held
+        // loop is kept alive by being called every tick it should sound; a frame
+        // that passes without a HoldLoop for its key stops it in the next
+        // Update. So a caller "holds" the whirr by calling this while the trigger
+        // is down and simply stops calling to end it — no handle to keep, no
+        // explicit stop, and a shooter that vanishes drops its loop for free.
+        //
+        // `key` identifies the emitter (a particular mount) so the same loop is
+        // matched from tick to tick; it must be stable while the loop plays and
+        // distinct between concurrent emitters. Volume and pan follow the emitter
+        // live here, deliberately unlike Play, which bakes them at the start: a
+        // whirr lasts long enough that the ship moves and the camera pans under
+        // it. A loop that falls silent with distance takes no voice — it lapses
+        // and restarts when it is audible again. Counterpart to Play for a
+        // sound authored `looping`.
+        void HoldLoop(int sound, uint64_t key, b2Vec2 position);
+
+        // Returns voices whose sound has finished to the pool, and stops any held
+        // loop not refreshed this frame (see HoldLoop). Call once per frame, last;
+        // without it the pool fills and later sounds are dropped.
         void Update();
 
     private:

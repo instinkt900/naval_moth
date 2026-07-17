@@ -78,6 +78,7 @@ namespace naval {
                 weapon.projectileSplashSound = audio.Find(projectileDef.splashSound);
                 weapon.projectileImpactShakeM = projectileDef.impactShakeM;
                 weapon.fireSound = audio.Find(gunDef.fireSound);
+                weapon.fireSoundLoops = audio.IsLooping(weapon.fireSound);
                 weapon.fireShakeM = gunDef.fireShakeM;
             } else {
                 // A launcher's reach, damage and the shot's look/sound all come
@@ -118,6 +119,7 @@ namespace naval {
                 weapon.munitionWaterborne = munitionDef.medium == defs::Medium::Water;
                 weapon.munitionHealth = munitionDef.health;
                 weapon.fireSound = audio.Find(launcherDef.fireSound);
+                weapon.fireSoundLoops = audio.IsLooping(weapon.fireSound);
                 weapon.fireShakeM = launcherDef.fireShakeM;
             }
             // The player's offensive mounts start switched out, so opening an
