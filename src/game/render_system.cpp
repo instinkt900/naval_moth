@@ -373,7 +373,36 @@ namespace naval {
         for (auto entity : registry.view<Projectile>()) {
             auto const& projectile = registry.get<Projectile>(entity);
             graphics.SetColor(projectile.color);
-            graphics.DrawFillCircleF(camera.WorldToScreen(projectile.position), camera.MToPx(projectile.radiusM));
+
+            // A ballistic shell is a round dot; a guided missile draws as a small
+            // rectangle laid along its velocity so its heading reads as it turns
+            // onto the target. The same translate-then-rotate transform the hull
+            // uses, with local +x forward along the direction of travel. At rest
+            // (the tick it launches) velocity has no direction, so it lies flat.
+            if (projectile.guidance != Guidance::Guided) {
+                graphics.DrawFillCircleF(camera.WorldToScreen(projectile.position),
+                                         camera.MToPx(projectile.radiusM));
+                continue;
+            }
+
+            float const angleDeg = projectile.velocity.LengthSquared() > 1e-6f
+                                       ? std::atan2(projectile.velocity.y, projectile.velocity.x) *
+                                             moth_ui::kRadToDeg
+                                       : 0.0f;
+            moth_ui::FloatVec2 const posPx = camera.WorldToScreen(projectile.position);
+            graphics.SetTransform(moth_ui::FloatMat4x4::Translation(posPx) *
+                                  moth_ui::FloatMat4x4::Rotation(angleDeg, { 0.0f, 0.0f }));
+
+            float const halfLenPx = camera.MToPx(projectile.radiusM * 2.0f);
+            float const halfWidPx = camera.MToPx(projectile.radiusM * 0.6f);
+            std::array<moth_ui::FloatVec2, 4> const shape{ {
+                { halfLenPx, -halfWidPx },
+                { halfLenPx, halfWidPx },
+                { -halfLenPx, halfWidPx },
+                { -halfLenPx, -halfWidPx },
+            } };
+            graphics.DrawFillPolygonF(shape.data(), shape.size());
+            graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         }
     }
 }

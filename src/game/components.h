@@ -110,6 +110,17 @@ namespace naval {
         bool seeded = false;             // true once lastDrop holds a real position
     };
 
+    // What a mounted weapon is, which decides how it aims and what it fires. Guns
+    // and launchers are one component and one Armament so the targeting, fire
+    // order, aggro, and UI systems treat every mount uniformly (they read range,
+    // arc, bearing and cooldown, all populated at spawn whichever the kind); only
+    // aiming and the shot itself branch on this.
+    enum class WeaponKind {
+        Gun,      // trains a barrel within its arc and fires a ballistic shell along it
+        VLS,      // vertical launch: 360 arc, no training; releases a guided missile at rest
+        Launcher, // trainable rail: trains within its arc, then launches a guided missile along it
+    };
+
     // A single weapon mounted on a ship. Static fields are resolved from the
     // database at spawn; the runtime fields update as it engages. bearing/arc
     // are relative to the bow — the arc's world centre is bodyAngle + bearing.
@@ -117,6 +128,7 @@ namespace naval {
     // bow, +y toward starboard); it is the origin for aiming, firing, and the
     // drawn arc.
     struct Weapon {
+        WeaponKind kind = WeaponKind::Gun;  // gun vs launcher; branches aiming and firing only
         std::string name;                   // weapon display name (the def's name, or its id), for the readout
         float bearing = 0.0f;               // rad, mount direction relative to bow
         b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
@@ -131,13 +143,22 @@ namespace naval {
         // on arrival come from its projectile. The projectile's arrival effects
         // are stamped onto each shot as it is fired and travel with it, so they
         // are held here only to be handed over.
-        float muzzleVelocity = 0.0f;    // m/s the shot leaves the barrel at
+        float muzzleVelocity = 0.0f;    // m/s the shot leaves the barrel at (gun only)
         float damage = 0.0f;            // hit points removed on impact
         float projectileRadiusM = 0.0f; // shot draw radius, metres
         moth_ui::Color projectileColor; // shot draw colour
         int projectileImpactSound = kNoSound; // heard where a shot strikes a hull
         int projectileSplashSound = kNoSound; // heard where a shot falls in the sea
         float projectileImpactShakeM = 0.0f;  // camera shake where a shot strikes a hull (m)
+
+        // Missile propulsion, cached from the loaded missile at spawn so a launch
+        // needs no lookup — the same trade the projectile stats above make. All
+        // zero for a gun; for a launcher/VLS they seed the guided shot's flight.
+        // The shot's reach and damage are already carried by range/damage above,
+        // populated from the missile for a launcher.
+        float missileMaxSpeed = 0.0f;     // m/s the missile accelerates up to
+        float missileAcceleration = 0.0f; // m/s^2 gained in flight
+        float missileTurnRate = 0.0f;     // rad/s its heading steers toward the target
 
         // What the gun itself does as it fires, felt and heard at the mount.
         // The sound handle is resolved at spawn for the same reason as the stats
@@ -155,8 +176,11 @@ namespace naval {
         // contact and shows a live aim solution, it simply never pulls the
         // trigger. This is a gun's one say in the engagement: the order reaches
         // the whole ship, and each gun answers only whether it is switched in.
-        // Defaults on, and only the player ever turns it off — an enemy battery,
-        // which nothing unticks, fires in full.
+        // The player's mounts are set switched out at spawn (see ship_factory),
+        // so opening fire is a deliberate act of ticking the wanted weapons in;
+        // an enemy battery, which nothing toggles, is spawned enabled and fights
+        // in full. The struct default stays on so a weapon built by any other
+        // path is armed unless a spawn decides otherwise.
         bool enabled = true;
 
         // Player-facing draw toggles, one set per weapon.
@@ -321,19 +345,44 @@ namespace naval {
         float age = 0.0f; // seconds since it was destroyed
     };
 
-    // A projectile in flight. Straight-shot: constant velocity, detonates once it
-    // has travelled to its fuzed range — set when fired to the target's distance
-    // (plus a little random spread) so a miss splashes near the target rather
-    // than flying on to the weapon's max range. Kept out of Box2D — it has no
-    // collision yet.
+    // How a projectile flies. A ballistic shot holds a constant velocity; a
+    // guided missile steers toward its homing target and accelerates as it goes.
+    enum class Guidance {
+        Ballistic,
+        Guided,
+    };
+
+    // A projectile in flight. Kept out of Box2D — it has no collision; hits are
+    // resolved analytically against hull rectangles.
+    //
+    // Ballistic (a gun's shell): constant velocity, detonates once it has
+    // travelled to its fuzed `remaining` range — set when fired to the target's
+    // distance (plus a little random spread) so a miss splashes near the target
+    // rather than flying on to the weapon's max range.
+    //
+    // Guided (a launcher's missile): each tick it turns its heading toward the
+    // homing target at `turnRate` and ramps its speed toward `maxSpeed` by
+    // `acceleration`, so it leaves the cell slow and accelerates in. `remaining`
+    // is its self-contained run distance: it flies until it strikes a hull or
+    // runs that out and splashes. Losing its target (the hull sank or left) it
+    // holds its heading and coasts on to the end of that run.
     struct Projectile {
         b2Vec2 position{ 0.0f, 0.0f }; // world space (metres)
         b2Vec2 velocity{ 0.0f, 0.0f }; // m/s
-        float remaining = 0.0f;        // m of travel left before the fuze detonates it
+        float remaining = 0.0f;        // m of travel left: fuze range (ballistic) or run distance (guided)
         float radiusM = 0.0f;          // draw radius, metres
         float damage = 0.0f;           // hit points removed from the hull it strikes
         moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike
+
+        // Guidance and the missile fields it needs; all inert for a ballistic
+        // shot. homingTarget is the hull the missile steers toward, cleared to
+        // null once it is no longer a valid live contact.
+        Guidance guidance = Guidance::Ballistic;
+        entt::entity homingTarget = entt::null; // hull steered toward, or null once lock is lost
+        float maxSpeed = 0.0f;                  // m/s the missile accelerates up to
+        float acceleration = 0.0f;              // m/s^2 gained in flight
+        float turnRate = 0.0f;                  // rad/s the heading steers toward the target
 
         // What the shot does when it arrives, carried on the shot itself because
         // the weapon that fired it may be gone — sunk — by the time it lands.

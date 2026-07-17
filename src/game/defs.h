@@ -44,7 +44,7 @@ namespace naval::defs {
         float impactShakeM = 0.0f;
     };
 
-    // A weapon type. Fires its projectile at any targetable inside its arc and
+    // A gun type. Fires its projectile at any targetable inside its arc and
     // range, respecting cooldown. The firing arc's centre bearing comes from the
     // hull mount; arcHalfAngle is the half-width to either side of it.
     //
@@ -52,7 +52,12 @@ namespace naval::defs {
     // pictures — a 90 degree gun sweeps 90 degrees of sea, not 180. It is halved
     // on load rather than in the systems because every consumer of it (targeting,
     // aim clamping, aggro's turn cost, the drawn arc) wants the half-width.
-    struct Weapon {
+    //
+    // Speed and damage are the gun's; its projectile only says how the shot looks
+    // and sounds. This is the opposite split from a Launcher/Missile, where the
+    // munition carries reach and damage — a gun's shell is dumb and interchangeable,
+    // a launcher's missile is the whole weapon and the launcher merely throws it.
+    struct Gun {
         std::string name;            // display name shown in game; defaults to the id if unspecified
         std::string projectile;      // id into the projectile table (its visuals)
         float muzzleVelocity = 0.0f; // m/s the shot leaves the barrel at
@@ -66,11 +71,70 @@ namespace naval::defs {
         float fireShakeM = 0.0f;  // metres of camera shake at full effect as it fires; 0 = none
     };
 
+    // How a launcher throws its missile, which is the one behaviour that a
+    // launcher's own hardware decides — the missile's flight (reach, speed,
+    // damage, guidance) all belongs to the Missile it is loaded with.
+    enum class LaunchType {
+        VLS,      // vertical launch: 360 degrees, no training; the missile leaves at rest and flies itself
+        Launcher, // trainable rail: trains within an arc like a gun, then launches the missile along it
+    };
+
+    // A launcher type: the hardware that fires a missile, deliberately dumb about
+    // what it fires. It carries no reach or damage of its own — those come from
+    // the Missile named at the mount — so one launcher can be loaded with any
+    // missile without a new definition. arcHalfAngle and turnRate matter only to
+    // the trainable Launcher type; a VLS ignores both (it is omnidirectional and
+    // never trains).
+    struct Launcher {
+        std::string name;         // display name shown in game; defaults to the id if unspecified
+        LaunchType type = LaunchType::VLS;
+        float cooldown = 0.0f;    // seconds between launches
+        float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees); trainable type only
+        float turnRate = 0.0f;    // radians/second the rail trains at (loaded from turnRateDegrees); trainable type only
+        std::string fireSound;    // id into the sound table; empty = silent
+        float fireShakeM = 0.0f;  // metres of camera shake at full effect as it launches; 0 = none
+    };
+
+    // A missile type: the guided munition a launcher fires, and the opposite of a
+    // Projectile in where the weight sits. A missile owns its whole engagement —
+    // its reach (which is both how far the launcher may fire and how far the
+    // missile runs before it self-destructs), its propulsion (it leaves slow and
+    // accelerates toward maxSpeed), its damage, and how hard it can manoeuvre
+    // (turnRate). Visuals and arrival sounds it carries too, as a projectile does.
+    struct Missile {
+        std::string name;          // display name; defaults to the id if unspecified
+        float range = 0.0f;        // metres: launch range, and the run distance before self-destruct
+        float acceleration = 0.0f; // m/s^2 gained in flight, from rest toward maxSpeed
+        float maxSpeed = 0.0f;     // m/s the missile accelerates up to (loaded from topSpeed)
+        float damage = 0.0f;       // hit points removed from a hull it strikes
+        float turnRate = 0.0f;     // radians/second its heading can steer toward the target (loaded from turnRateDegrees)
+        float radiusM = 0.0f;      // draw radius, metres
+        moth_ui::Color color;
+        std::string impactSound; // id into the sound table; empty = silent
+        std::string splashSound; // id into the sound table; empty = silent
+        float impactShakeM = 0.0f; // metres of camera shake at full effect where it strikes a hull; 0 = none
+    };
+
+    // Whether a mount holds a gun or a launcher — which weapon table its ids
+    // resolve against, and which runtime weapon it spawns.
+    enum class MountType {
+        Gun,
+        Launcher,
+    };
+
     // A weapon fixed to a hull at a bearing relative to the bow (radians;
     // -pi/2 = port beam, +pi/2 = starboard beam) and a position on the hull
     // (local metres; +forward toward the bow, +lateral toward starboard).
+    //
+    // A gun mount names a gun. A launcher mount names a launcher *and* the missile
+    // loaded in it, so the loadout lives here rather than on the launcher — the
+    // same launcher hardware carries different missiles on different ships without
+    // duplicating its definition.
     struct Mount {
-        std::string weapon;   // id into the weapon table
+        MountType type = MountType::Gun;
+        std::string gun;      // id into the gun table (gun mounts)
+        std::string launcher; // id into the launcher table (launcher mounts)
+        std::string missile;  // id into the missile table (launcher mounts): the loaded round
         float bearing = 0.0f; // radians (loaded from bearingDegrees)
         float forwardM = 0.0f; // hull-local offset toward the bow
         float lateralM = 0.0f; // hull-local offset toward starboard
@@ -129,7 +193,9 @@ namespace naval::defs {
         static Database Load(std::filesystem::path const& dir);
 
         Hull const& GetHull(std::string const& id) const;
-        Weapon const& GetWeapon(std::string const& id) const;
+        Gun const& GetGun(std::string const& id) const;
+        Launcher const& GetLauncher(std::string const& id) const;
+        Missile const& GetMissile(std::string const& id) const;
         Projectile const& GetProjectile(std::string const& id) const;
         Enemy const& GetEnemy(std::string const& id) const;
         Player const& GetPlayer() const;
@@ -141,7 +207,9 @@ namespace naval::defs {
 
     private:
         std::unordered_map<std::string, Hull> m_hulls;
-        std::unordered_map<std::string, Weapon> m_weapons;
+        std::unordered_map<std::string, Gun> m_guns;
+        std::unordered_map<std::string, Launcher> m_launchers;
+        std::unordered_map<std::string, Missile> m_missiles;
         std::unordered_map<std::string, Projectile> m_projectiles;
         std::unordered_map<std::string, Enemy> m_enemies;
         std::unordered_map<std::string, Sound> m_sounds;

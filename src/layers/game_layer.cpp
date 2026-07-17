@@ -503,17 +503,17 @@ namespace naval {
             return;
         }
 
-        for (std::size_t i = 0; i < armament->weapons.size(); ++i) {
+        // One weapon's row: the enable tick, the name, its two draw toggles, and
+        // its status. Unticked, the weapon is switched out of the fire orders and
+        // holds through all of them while still tracking and drawing. This is the
+        // one per-weapon fire control — a weapon's only say in the engagement is
+        // whether it takes part at all. The tick's label is hidden (the name
+        // beside it labels it); PushID keeps it unique across the whole battery.
+        auto drawRow = [&](std::size_t i) {
             ImGui::Separator();
             Weapon& weapon = armament->weapons[i];
             ImGui::PushID(static_cast<int>(i));
 
-            // One row: the enable tick, the gun's name, then its two draw
-            // toggles. Unticked, the gun is switched out of the fire orders and
-            // holds through all of them while still tracking and drawing. This
-            // is the one per-weapon fire control — a gun's only say in the
-            // engagement is whether it takes part at all. The tick's label is
-            // hidden (the name beside it labels it); PushID keeps it unique.
             ImGui::Checkbox("##enable", &weapon.enabled);
             ImGui::SameLine();
             ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
@@ -522,14 +522,14 @@ namespace naval {
             ImGui::SameLine();
             ImGui::Checkbox("Show spread", &weapon.showSpread);
 
-            // What this gun is doing about the ship's order. Read-only apart from
-            // the enable tick above: the order itself is the leading block's to
-            // give.
+            // What this weapon is doing about the ship's order. Read-only apart
+            // from the enable tick above: the order itself is the leading block's
+            // to give.
             //
-            // Read off the gun's own mark, not hasTarget, so that under free
-            // fire a gun laid on a contact of its own says so instead of
+            // Read off the weapon's own mark, not hasTarget, so that under free
+            // fire a weapon laid on a contact of its own says so instead of
             // reporting "no bearing" on the strength of the designated one. A
-            // switched-out gun reads "disabled" ahead of any of that, since it
+            // switched-out weapon reads "disabled" ahead of any of that, since it
             // is holding whatever it can reach. When it does bear, the barrel is
             // either still slewing onto the mark or acquired and on it — the
             // distinction the turn rate makes visible.
@@ -545,11 +545,11 @@ namespace naval {
                 status = shooting ? "firing" : "acquired, holding";
             }
 
-            // The reload clock rides alongside the lay state whenever the gun is
-            // cooling, firing or not — so an auto-firing battery still shows each
-            // gun training and reloading rather than a bare "firing". A gun
-            // ordered to fire but still slewing reads "slewing", since with the
-            // trigger gated on acquisition it is holding its rounds, not firing.
+            // The reload clock rides alongside the lay state whenever the weapon
+            // is cooling, firing or not — so an auto-firing battery still shows
+            // each mount training and reloading rather than a bare "firing". A
+            // weapon ordered to fire but still slewing reads "slewing", since with
+            // the trigger gated on acquisition it is holding its rounds.
             if (weapon.enabled && weapon.cooldownRemaining > 0.0f) {
                 ImGui::TextUnformatted(
                     fmt::format("{}  reloading {:.1f}s", status, weapon.cooldownRemaining).c_str());
@@ -558,6 +558,29 @@ namespace naval {
             }
 
             ImGui::PopID();
-        }
+        };
+
+        // Guns and launchers are listed apart, each under its own heading, so the
+        // battery reads as two systems — the gun line and the missile cells —
+        // rather than one mixed list. A heading shows only if the ship carries
+        // that kind.
+        auto drawGroup = [&](char const* heading, bool wantGun) {
+            bool headed = false;
+            for (std::size_t i = 0; i < armament->weapons.size(); ++i) {
+                bool const isGun = armament->weapons[i].kind == WeaponKind::Gun;
+                if (isGun != wantGun) {
+                    continue;
+                }
+                if (!headed) {
+                    ImGui::Separator();
+                    ImGui::TextUnformatted(heading);
+                    headed = true;
+                }
+                drawRow(i);
+            }
+        };
+
+        drawGroup("Guns", true);
+        drawGroup("Launchers", false);
     }
 }

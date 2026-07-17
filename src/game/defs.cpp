@@ -86,27 +86,70 @@ namespace naval::defs {
             db.m_projectiles.emplace(id, p);
         }
 
-        nlohmann::json const weaponsJson = ReadJson(dir / "weapons.json");
-        for (auto const& [id, j] : weaponsJson.items()) {
-            Weapon w;
-            w.name = j.value("name", id);
-            w.projectile = j.at("projectile").get<std::string>();
-            w.muzzleVelocity = j.at("muzzleVelocity").get<float>();
-            w.damage = j.at("damage").get<float>();
-            w.cooldown = j.at("cooldown").get<float>();
-            w.range = j.at("range").get<float>();
+        nlohmann::json const gunsJson = ReadJson(dir / "guns.json");
+        for (auto const& [id, j] : gunsJson.items()) {
+            Gun g;
+            g.name = j.value("name", id);
+            g.projectile = j.at("projectile").get<std::string>();
+            g.muzzleVelocity = j.at("muzzleVelocity").get<float>();
+            g.damage = j.at("damage").get<float>();
+            g.cooldown = j.at("cooldown").get<float>();
+            g.range = j.at("range").get<float>();
             // Degrees/second as authored; radians/second at runtime. Optional —
-            // a weapon that omits it (or gives <= 0) trains instantly, the way
+            // a gun that omits it (or gives <= 0) trains instantly, the way
             // guns behaved before barrels had a turn rate.
-            w.turnRate = j.value("turnRateDegrees", 0.0f) * moth_ui::kDegToRad;
+            g.turnRate = j.value("turnRateDegrees", 0.0f) * moth_ui::kDegToRad;
             // Authored as the arc's full width, halved here because the runtime
             // works in a half-width to either side of the mount bearing.
-            w.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad * 0.5f;
-            w.spread = j.value("spreadDegrees", 0.0f) * moth_ui::kDegToRad;
-            w.fireSound = j.value("fireSound", std::string{});
-            w.fireShakeM = j.value("fireShakeM", 0.0f);
-            Require(w.fireShakeM >= 0.0f, "weapon '" + id + "' fireShakeM must not be negative");
-            db.m_weapons.emplace(id, w);
+            g.arcHalfAngle = j.at("arcDegrees").get<float>() * moth_ui::kDegToRad * 0.5f;
+            g.spread = j.value("spreadDegrees", 0.0f) * moth_ui::kDegToRad;
+            g.fireSound = j.value("fireSound", std::string{});
+            g.fireShakeM = j.value("fireShakeM", 0.0f);
+            Require(g.fireShakeM >= 0.0f, "gun '" + id + "' fireShakeM must not be negative");
+            db.m_guns.emplace(id, g);
+        }
+
+        nlohmann::json const launchersJson = ReadJson(dir / "launchers.json");
+        for (auto const& [id, j] : launchersJson.items()) {
+            Launcher l;
+            l.name = j.value("name", id);
+            std::string const type = j.value("type", std::string{ "vls" });
+            Require(type == "vls" || type == "launcher",
+                    "launcher '" + id + "' type must be \"vls\" or \"launcher\"");
+            l.type = type == "vls" ? LaunchType::VLS : LaunchType::Launcher;
+            l.cooldown = j.at("cooldown").get<float>();
+            // Arc and rail turn rate matter only to a trainable launcher; a VLS
+            // is omnidirectional and never trains, so both are left at zero and
+            // the runtime treats it as a full-circle arc.
+            l.arcHalfAngle = j.value("arcDegrees", 0.0f) * moth_ui::kDegToRad * 0.5f;
+            l.turnRate = j.value("turnRateDegrees", 0.0f) * moth_ui::kDegToRad;
+            Require(l.type != LaunchType::Launcher || j.contains("arcDegrees"),
+                    "launcher '" + id + "' of type \"launcher\" needs arcDegrees");
+            l.fireSound = j.value("fireSound", std::string{});
+            l.fireShakeM = j.value("fireShakeM", 0.0f);
+            Require(l.fireShakeM >= 0.0f, "launcher '" + id + "' fireShakeM must not be negative");
+            db.m_launchers.emplace(id, l);
+        }
+
+        nlohmann::json const missilesJson = ReadJson(dir / "missiles.json");
+        for (auto const& [id, j] : missilesJson.items()) {
+            Missile m;
+            m.name = j.value("name", id);
+            m.range = j.at("range").get<float>();
+            m.acceleration = j.at("acceleration").get<float>();
+            m.maxSpeed = j.at("topSpeed").get<float>();
+            m.damage = j.at("damage").get<float>();
+            m.turnRate = j.at("turnRateDegrees").get<float>() * moth_ui::kDegToRad;
+            m.radiusM = j.at("radiusM").get<float>();
+            m.color = ParseColor(j.at("color"));
+            m.impactSound = j.value("impactSound", std::string{});
+            m.splashSound = j.value("splashSound", std::string{});
+            m.impactShakeM = j.value("impactShakeM", 0.0f);
+            Require(m.range > 0.0f, "missile '" + id + "' range must be positive");
+            Require(m.acceleration > 0.0f, "missile '" + id + "' acceleration must be positive");
+            Require(m.maxSpeed > 0.0f, "missile '" + id + "' topSpeed must be positive");
+            Require(m.impactShakeM >= 0.0f, "missile '" + id + "' impactShakeM must not be negative");
+            db.m_missiles.emplace(id, m);
         }
 
         nlohmann::json const hullsJson = ReadJson(dir / "hulls.json");
@@ -146,7 +189,17 @@ namespace naval::defs {
             Require(h.explosionShakeM >= 0.0f, "hull '" + id + "' explosionShakeM must not be negative");
             for (auto const& jm : j.at("mounts")) {
                 Mount m;
-                m.weapon = jm.at("weapon").get<std::string>();
+                std::string const type = jm.value("type", std::string{ "gun" });
+                Require(type == "gun" || type == "launcher",
+                        "hull '" + id + "' mount type must be \"gun\" or \"launcher\"");
+                if (type == "gun") {
+                    m.type = MountType::Gun;
+                    m.gun = jm.at("gun").get<std::string>();
+                } else {
+                    m.type = MountType::Launcher;
+                    m.launcher = jm.at("launcher").get<std::string>();
+                    m.missile = jm.at("missile").get<std::string>();
+                }
                 m.bearing = jm.at("bearingDegrees").get<float>() * moth_ui::kDegToRad;
                 m.forwardM = jm.value("forwardM", 0.0f);
                 m.lateralM = jm.value("lateralM", 0.0f);
@@ -174,10 +227,17 @@ namespace naval::defs {
                     owner + " references unknown sound '" + sound + "'");
         };
 
-        for (auto const& [id, weapon] : db.m_weapons) {
-            Require(db.m_projectiles.count(weapon.projectile) != 0,
-                    "weapon '" + id + "' references unknown projectile '" + weapon.projectile + "'");
-            requireSound(weapon.fireSound, "weapon '" + id + "'");
+        for (auto const& [id, gun] : db.m_guns) {
+            Require(db.m_projectiles.count(gun.projectile) != 0,
+                    "gun '" + id + "' references unknown projectile '" + gun.projectile + "'");
+            requireSound(gun.fireSound, "gun '" + id + "'");
+        }
+        for (auto const& [id, launcher] : db.m_launchers) {
+            requireSound(launcher.fireSound, "launcher '" + id + "'");
+        }
+        for (auto const& [id, missile] : db.m_missiles) {
+            requireSound(missile.impactSound, "missile '" + id + "'");
+            requireSound(missile.splashSound, "missile '" + id + "'");
         }
         for (auto const& [id, projectile] : db.m_projectiles) {
             requireSound(projectile.impactSound, "projectile '" + id + "'");
@@ -186,8 +246,15 @@ namespace naval::defs {
         for (auto const& [id, hull] : db.m_hulls) {
             requireSound(hull.explosionSound, "hull '" + id + "'");
             for (auto const& mount : hull.mounts) {
-                Require(db.m_weapons.count(mount.weapon) != 0,
-                        "hull '" + id + "' mounts unknown weapon '" + mount.weapon + "'");
+                if (mount.type == MountType::Gun) {
+                    Require(db.m_guns.count(mount.gun) != 0,
+                            "hull '" + id + "' mounts unknown gun '" + mount.gun + "'");
+                } else {
+                    Require(db.m_launchers.count(mount.launcher) != 0,
+                            "hull '" + id + "' mounts unknown launcher '" + mount.launcher + "'");
+                    Require(db.m_missiles.count(mount.missile) != 0,
+                            "hull '" + id + "' loads unknown missile '" + mount.missile + "'");
+                }
             }
         }
         for (auto const& [id, enemy] : db.m_enemies) {
@@ -206,9 +273,21 @@ namespace naval::defs {
         return it->second;
     }
 
-    Weapon const& Database::GetWeapon(std::string const& id) const {
-        auto it = m_weapons.find(id);
-        Require(it != m_weapons.end(), "no weapon '" + id + "'");
+    Gun const& Database::GetGun(std::string const& id) const {
+        auto it = m_guns.find(id);
+        Require(it != m_guns.end(), "no gun '" + id + "'");
+        return it->second;
+    }
+
+    Launcher const& Database::GetLauncher(std::string const& id) const {
+        auto it = m_launchers.find(id);
+        Require(it != m_launchers.end(), "no launcher '" + id + "'");
+        return it->second;
+    }
+
+    Missile const& Database::GetMissile(std::string const& id) const {
+        auto it = m_missiles.find(id);
+        Require(it != m_missiles.end(), "no missile '" + id + "'");
         return it->second;
     }
 

@@ -392,37 +392,8 @@ namespace naval {
                     continue;
                 }
 
-                // The shot leaves along the barrel, not straight at the aim
-                // point: while the gun is still training the two diverge, and
-                // that lag is the whole point of the turn rate. Take where the
-                // barrel points at the aim's range as the shot's centre, then
-                // scatter the spread disc around it — so a laid gun matches the
-                // old behaviour and a slewing one throws wide of the lead in the
-                // direction it has yet to cover.
-                float const barrelBearing = shipAngle + weapon.aimBearing;
-                float const aimRange = (weapon.aimWorld - mountPos).Length();
-                b2Vec2 const barrelPoint =
-                    mountPos + (aimRange * b2Vec2{ std::cos(barrelBearing), std::sin(barrelBearing) });
-                b2Vec2 const firePoint = barrelPoint + RandomInDisc(weapon.spreadRadiusM);
-
-                // Fire from the mount toward the scattered point, but never past
-                // the weapon's arc: clamp the shot's bearing to the arc so a target
-                // straddling the edge is still only shot at within it.
-                b2Vec2 const toFire = firePoint - mountPos;
-                float const aimDelta = WrapPi(std::atan2(toFire.y, toFire.x) - arcCentre);
-                float const shotBearing =
-                    arcCentre + std::clamp(aimDelta, -weapon.arcHalfAngle, weapon.arcHalfAngle);
-                b2Vec2 const aim{ std::cos(shotBearing), std::sin(shotBearing) };
-
-                // Fuze the shot to the scattered point's range so it detonates
-                // there — near the target — rather than flying on to max range.
-                // Capped at the weapon's reach.
-                float const fuzeRange = std::clamp(toFire.Length(), 0.0f, weapon.range);
-
                 Projectile shot;
                 shot.position = mountPos;
-                shot.velocity = weapon.muzzleVelocity * aim;
-                shot.remaining = fuzeRange;
                 shot.radiusM = weapon.projectileRadiusM;
                 shot.damage = weapon.damage;
                 shot.color = weapon.projectileColor;
@@ -432,6 +403,51 @@ namespace naval {
                 shot.impactSound = weapon.projectileImpactSound;
                 shot.splashSound = weapon.projectileSplashSound;
                 shot.impactShakeM = weapon.projectileImpactShakeM;
+
+                if (weapon.kind == WeaponKind::Gun) {
+                    // The shot leaves along the barrel, not straight at the aim
+                    // point: while the gun is still training the two diverge, and
+                    // that lag is the whole point of the turn rate. Take where the
+                    // barrel points at the aim's range as the shot's centre, then
+                    // scatter the spread disc around it — so a laid gun matches the
+                    // old behaviour and a slewing one throws wide of the lead in the
+                    // direction it has yet to cover.
+                    float const barrelBearing = shipAngle + weapon.aimBearing;
+                    float const aimRange = (weapon.aimWorld - mountPos).Length();
+                    b2Vec2 const barrelPoint =
+                        mountPos + (aimRange * b2Vec2{ std::cos(barrelBearing), std::sin(barrelBearing) });
+                    b2Vec2 const firePoint = barrelPoint + RandomInDisc(weapon.spreadRadiusM);
+
+                    // Fire from the mount toward the scattered point, but never past
+                    // the weapon's arc: clamp the shot's bearing to the arc so a target
+                    // straddling the edge is still only shot at within it.
+                    b2Vec2 const toFire = firePoint - mountPos;
+                    float const aimDelta = WrapPi(std::atan2(toFire.y, toFire.x) - arcCentre);
+                    float const shotBearing =
+                        arcCentre + std::clamp(aimDelta, -weapon.arcHalfAngle, weapon.arcHalfAngle);
+                    b2Vec2 const aim{ std::cos(shotBearing), std::sin(shotBearing) };
+
+                    // Fuze the shot to the scattered point's range so it detonates
+                    // there — near the target — rather than flying on to max range.
+                    // Capped at the weapon's reach.
+                    shot.velocity = weapon.muzzleVelocity * aim;
+                    shot.remaining = std::clamp(toFire.Length(), 0.0f, weapon.range);
+                } else {
+                    // A launcher throws a guided missile: it leaves the cell at
+                    // rest and flies itself, turning onto the target and building
+                    // speed under its own power. Its reach is its self-contained
+                    // run distance — it homes until it strikes or runs that out.
+                    // The aim/train block above still ran, so a trainable launcher
+                    // held fire until its rail lined up; a VLS, arc-wide and never
+                    // training, was 'acquired' the moment a target bore.
+                    shot.velocity = b2Vec2{ 0.0f, 0.0f };
+                    shot.remaining = weapon.range;
+                    shot.guidance = Guidance::Guided;
+                    shot.homingTarget = target;
+                    shot.maxSpeed = weapon.missileMaxSpeed;
+                    shot.acceleration = weapon.missileAcceleration;
+                    shot.turnRate = weapon.missileTurnRate;
+                }
                 spawned.push_back(shot);
 
                 // Heard and felt at the mount rather than the ship's centre, so
@@ -459,6 +475,41 @@ namespace naval {
         auto view = registry.view<Projectile>();
         for (auto entity : view) {
             auto& projectile = view.get<Projectile>(entity);
+
+            // A guided missile steers and accelerates before it is integrated. It
+            // turns its heading toward the homing target at its turn rate and ramps
+            // speed toward maxSpeed, so it leaves the cell at rest and drives in. A
+            // target that sank or left the registry drops the lock: it holds its
+            // heading and keeps accelerating to the end of its run. Ballistic shots
+            // fall straight through with a constant velocity.
+            if (projectile.guidance == Guidance::Guided) {
+                float speed = projectile.velocity.Length();
+                bool const locked = projectile.homingTarget != entt::null &&
+                                    registry.valid(projectile.homingTarget) &&
+                                    registry.all_of<Physics>(projectile.homingTarget);
+                // At (near) rest the heading is undefined, so seed it toward the
+                // target when locked, or hold due east when it has no mark to steer
+                // by; otherwise carry the current heading.
+                float heading = speed > 1e-3f
+                                    ? std::atan2(projectile.velocity.y, projectile.velocity.x)
+                                    : 0.0f;
+                if (locked) {
+                    b2Vec2 const targetPos = registry.get<Physics>(projectile.homingTarget).body->GetPosition();
+                    float const desired = std::atan2(targetPos.y - projectile.position.y,
+                                                     targetPos.x - projectile.position.x);
+                    if (speed <= 1e-3f) {
+                        heading = desired;
+                    }
+                    float const delta = WrapPi(desired - heading);
+                    float const step = projectile.turnRate * dt;
+                    heading += std::abs(delta) <= step ? delta : std::copysign(step, delta);
+                } else {
+                    projectile.homingTarget = entt::null;
+                }
+                speed = std::min(projectile.maxSpeed, speed + (projectile.acceleration * dt));
+                projectile.velocity = speed * b2Vec2{ std::cos(heading), std::sin(heading) };
+            }
+
             projectile.position += dt * projectile.velocity;
             projectile.remaining -= dt * projectile.velocity.Length();
 

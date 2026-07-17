@@ -51,28 +51,68 @@ namespace naval {
 
         Armament armament;
         for (auto const& mount : hull.mounts) {
-            defs::Weapon const& weaponDef = db.GetWeapon(mount.weapon);
-            defs::Projectile const& projectileDef = db.GetProjectile(weaponDef.projectile);
             Weapon weapon;
-            weapon.name = weaponDef.name;
             weapon.bearing = mount.bearing;
-            // The barrel starts centred in its arc, i.e. laid along the mount.
+            // The barrel/rail starts centred in its arc, i.e. laid along the mount.
             weapon.aimBearing = mount.bearing;
             weapon.mountOffset = b2Vec2{ mount.forwardM, mount.lateralM };
-            weapon.arcHalfAngle = weaponDef.arcHalfAngle;
-            weapon.turnRate = weaponDef.turnRate;
-            weapon.range = weaponDef.range;
-            weapon.spread = weaponDef.spread;
-            weapon.muzzleVelocity = weaponDef.muzzleVelocity;
-            weapon.damage = weaponDef.damage;
-            weapon.cooldown = weaponDef.cooldown;
-            weapon.projectileRadiusM = projectileDef.radiusM;
-            weapon.projectileColor = projectileDef.color;
-            weapon.projectileImpactSound = audio.Find(projectileDef.impactSound);
-            weapon.projectileSplashSound = audio.Find(projectileDef.splashSound);
-            weapon.projectileImpactShakeM = projectileDef.impactShakeM;
-            weapon.fireSound = audio.Find(weaponDef.fireSound);
-            weapon.fireShakeM = weaponDef.fireShakeM;
+
+            if (mount.type == defs::MountType::Gun) {
+                defs::Gun const& gunDef = db.GetGun(mount.gun);
+                defs::Projectile const& projectileDef = db.GetProjectile(gunDef.projectile);
+                weapon.kind = WeaponKind::Gun;
+                weapon.name = gunDef.name;
+                weapon.arcHalfAngle = gunDef.arcHalfAngle;
+                weapon.turnRate = gunDef.turnRate;
+                weapon.range = gunDef.range;
+                weapon.spread = gunDef.spread;
+                weapon.cooldown = gunDef.cooldown;
+                weapon.muzzleVelocity = gunDef.muzzleVelocity;
+                weapon.damage = gunDef.damage;
+                weapon.projectileRadiusM = projectileDef.radiusM;
+                weapon.projectileColor = projectileDef.color;
+                weapon.projectileImpactSound = audio.Find(projectileDef.impactSound);
+                weapon.projectileSplashSound = audio.Find(projectileDef.splashSound);
+                weapon.projectileImpactShakeM = projectileDef.impactShakeM;
+                weapon.fireSound = audio.Find(gunDef.fireSound);
+                weapon.fireShakeM = gunDef.fireShakeM;
+            } else {
+                // A launcher's reach, damage and the shot's look/sound all come
+                // from the missile loaded at the mount; the launcher itself gives
+                // only how it aims (arc/train) and the launch report. A VLS is
+                // omnidirectional and never trains — a full-circle arc, no rail.
+                defs::Launcher const& launcherDef = db.GetLauncher(mount.launcher);
+                defs::Missile const& missileDef = db.GetMissile(mount.missile);
+                weapon.kind = launcherDef.type == defs::LaunchType::VLS ? WeaponKind::VLS
+                                                                        : WeaponKind::Launcher;
+                // A VLS arc is the whole circle, which draws as a heavy ring at
+                // missile range rather than a readable coverage wedge, so start it
+                // hidden — the player can still toggle it on. A trainable launcher
+                // has a real wedge worth showing, like a gun.
+                weapon.showArc = launcherDef.type != defs::LaunchType::VLS;
+                weapon.name = launcherDef.name;
+                weapon.arcHalfAngle =
+                    launcherDef.type == defs::LaunchType::VLS ? b2_pi : launcherDef.arcHalfAngle;
+                weapon.turnRate = launcherDef.turnRate;
+                weapon.range = missileDef.range;
+                weapon.cooldown = launcherDef.cooldown;
+                weapon.damage = missileDef.damage;
+                weapon.projectileRadiusM = missileDef.radiusM;
+                weapon.projectileColor = missileDef.color;
+                weapon.projectileImpactSound = audio.Find(missileDef.impactSound);
+                weapon.projectileSplashSound = audio.Find(missileDef.splashSound);
+                weapon.projectileImpactShakeM = missileDef.impactShakeM;
+                weapon.missileMaxSpeed = missileDef.maxSpeed;
+                weapon.missileAcceleration = missileDef.acceleration;
+                weapon.missileTurnRate = missileDef.turnRate;
+                weapon.fireSound = audio.Find(launcherDef.fireSound);
+                weapon.fireShakeM = launcherDef.fireShakeM;
+            }
+            // The player's mounts start switched out, so opening an engagement is
+            // a deliberate act of ticking in the weapons wanted rather than the
+            // whole battery cutting loose at once. An enemy battery, which nothing
+            // toggles, stays enabled and fights in full.
+            weapon.enabled = faction != Faction::Player;
             armament.weapons.push_back(weapon);
         }
         registry.emplace<Armament>(entity, std::move(armament));

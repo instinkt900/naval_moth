@@ -1,0 +1,15 @@
+{
+    "rim162_essm": {
+        "name": "RIM-162 ESSM",
+        "range": 2500.0,
+        "acceleration": 150.0,
+        "topSpeed": 350.0,
+        "damage": 30.0,
+        "turnRateDegrees": 90.0,
+        "radiusM": 1.0,
+        "color": [1.0, 0.5, 0.2, 1.0],
+        "impactSound": "impact_large",
+        "splashSound": "splash_large",
+        "impactShakeM": 1.0
+    }
+}

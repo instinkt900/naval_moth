@@ -43,5 +43,10 @@
         "file": "audio/Large-explosion-or-cannon-in-a-close-perspective-450.wav",
         "volume": 1.0,
         "pitchVariance": 0.1
+    },
+    "launcher_basic": {
+        "file": "audio/Rocket-launcher-single-shot-487.wav",
+        "volume": 1.0,
+        "pitchVariance": 0.1
     }
 }

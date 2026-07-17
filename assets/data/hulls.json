@@ -13,7 +13,7 @@
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "auto_gun", "bearingDegrees": 0.0, "forwardM": 5.0, "lateralM": 0.0 }
+            { "type": "gun", "gun": "auto_gun", "bearingDegrees": 0.0, "forwardM": 5.0, "lateralM": 0.0 }
         ]
     },
     "frigate": {
@@ -32,10 +32,11 @@
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "mk45_mod2", "bearingDegrees": 0.0, "forwardM": 38.0, "lateralM": 0.0 },
-            { "weapon": "m2_browning", "bearingDegrees": 90.0, "forwardM": 6.0, "lateralM": 6.5 },
-            { "weapon": "m2_browning", "bearingDegrees": -90.0, "forwardM": 6.0, "lateralM": -6.5 },
-            { "weapon": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -32.0, "lateralM": 0.0 }
+            { "type": "gun", "gun": "mk45_mod2", "bearingDegrees": 0.0, "forwardM": 38.0, "lateralM": 0.0 },
+            { "type": "launcher", "launcher": "mk41", "missile": "rim162_essm", "bearingDegrees": 0.0, "forwardM": 22.0, "lateralM": 0.0 },
+            { "type": "gun", "gun": "m2_browning", "bearingDegrees": 90.0, "forwardM": 6.0, "lateralM": 6.5 },
+            { "type": "gun", "gun": "m2_browning", "bearingDegrees": -90.0, "forwardM": 6.0, "lateralM": -6.5 },
+            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -32.0, "lateralM": 0.0 }
         ]
     },
     "destroyer": {
@@ -52,10 +53,10 @@
         "angularDamping": 3.0,
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
-            { "weapon": "mk45", "bearingDegrees": 0.0, "forwardM": 48.0, "lateralM": 0.0 },
-            { "weapon": "typhoon_25", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 7.0 },
-            { "weapon": "typhoon_25", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -7.0 },
-            { "weapon": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -40.0, "lateralM": 0.0 }
+            { "type": "gun", "gun": "mk45", "bearingDegrees": 0.0, "forwardM": 48.0, "lateralM": 0.0 },
+            { "type": "gun", "gun": "typhoon_25", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 7.0 },
+            { "type": "gun", "gun": "typhoon_25", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -7.0 },
+            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -40.0, "lateralM": 0.0 }
         ]
     },
     "corsair": {
@@ -77,7 +78,7 @@
         "explosionSound": "explosion",
         "explosionShakeM": 2.5,
         "mounts": [
-            { "weapon": "auto_gun", "bearingDegrees": 0.0, "forwardM": 18.0, "lateralM": 0.0 }
+            { "type": "gun", "gun": "auto_gun", "bearingDegrees": 0.0, "forwardM": 18.0, "lateralM": 0.0 }
         ]
     },
     "hulk": {
