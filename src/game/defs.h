@@ -54,9 +54,9 @@ namespace naval::defs {
     // aim clamping, aggro's turn cost, the drawn arc) wants the half-width.
     //
     // Speed and damage are the gun's; its projectile only says how the shot looks
-    // and sounds. This is the opposite split from a Launcher/Missile, where the
+    // and sounds. This is the opposite split from a Launcher/Munition, where the
     // munition carries reach and damage — a gun's shell is dumb and interchangeable,
-    // a launcher's missile is the whole weapon and the launcher merely throws it.
+    // a launcher's munition is the whole weapon and the launcher merely throws it.
     struct Gun {
         std::string name;            // display name shown in game; defaults to the id if unspecified
         std::string projectile;      // id into the projectile table (its visuals)
@@ -71,18 +71,18 @@ namespace naval::defs {
         float fireShakeM = 0.0f;  // metres of camera shake at full effect as it fires; 0 = none
     };
 
-    // How a launcher throws its missile, which is the one behaviour that a
-    // launcher's own hardware decides — the missile's flight (reach, speed,
-    // damage, guidance) all belongs to the Missile it is loaded with.
+    // How a launcher throws its munition, which is the one behaviour that a
+    // launcher's own hardware decides — the munition's flight (reach, speed,
+    // damage, guidance) all belongs to the Munition it is loaded with.
     enum class LaunchType {
-        VLS,      // vertical launch: 360 degrees, no training; the missile leaves at rest and flies itself
-        Launcher, // trainable rail: trains within an arc like a gun, then launches the missile along it
+        VLS,      // vertical launch: 360 degrees, no training; the munition leaves at rest and flies itself
+        Launcher, // trainable rail: trains within an arc like a gun, then launches the munition along it
     };
 
-    // A launcher type: the hardware that fires a missile, deliberately dumb about
+    // A launcher type: the hardware that fires a munition, deliberately dumb about
     // what it fires. It carries no reach or damage of its own — those come from
-    // the Missile named at the mount — so one launcher can be loaded with any
-    // missile without a new definition. arcHalfAngle and turnRate matter only to
+    // the Munition named at the mount — so one launcher can be loaded with any
+    // munition without a new definition. arcHalfAngle and turnRate matter only to
     // the trainable Launcher type; a VLS ignores both (it is omnidirectional and
     // never trains).
     struct Launcher {
@@ -91,7 +91,7 @@ namespace naval::defs {
         // A launcher fires from a bank of tubes, not on a single cooldown: `tubes`
         // ready rounds launch in quick succession spaced by `launchInterval`, then
         // each spent tube reloads on its own over `reloadTime`, one at a time.
-        int tubes = 1;               // number of tubes, each a ready-to-fire missile
+        int tubes = 1;               // number of tubes, each a ready-to-fire munition
         float launchInterval = 0.0f; // seconds enforced between successive launches
         float reloadTime = 0.0f;     // seconds to reload one spent tube
         float arcHalfAngle = 0.0f; // radians (half-width; loaded from arcDegrees); trainable type only
@@ -100,18 +100,31 @@ namespace naval::defs {
         float fireShakeM = 0.0f;  // metres of camera shake at full effect as it launches; 0 = none
     };
 
-    // A missile type: the guided munition a launcher fires, and the opposite of a
-    // Projectile in where the weight sits. A missile owns its whole engagement —
-    // its reach (which is both how far the launcher may fire and how far the
-    // missile runs before it self-destructs), its propulsion (it leaves slow and
-    // accelerates toward maxSpeed), its damage, and how hard it can manoeuvre
-    // (turnRate). Visuals and arrival sounds it carries too, as a projectile does.
-    struct Missile {
+    // Which medium a munition travels through, and the one axis that a missile and
+    // a torpedo actually differ on — everything else (homing, acceleration, arming)
+    // is shared, so both are one Munition type distinguished only by this. Today it
+    // decides whether a spent round splashes the surface (air does, water is already
+    // in the sea and just stops); later it will drive what a munition can engage and
+    // be engaged by — a torpedo against submarines, a CIWS against inbound missiles.
+    enum class Medium {
+        Air,   // a missile: flies over anything
+        Water, // a torpedo: swims; no surface splash when it expires
+    };
+
+    // A munition type: the guided round a launcher fires — a missile or a torpedo,
+    // which differ only by medium (above). The opposite of a Projectile in where
+    // the weight sits: a munition owns its whole engagement — its reach (both how
+    // far the launcher may fire and how far it runs before it self-destructs), its
+    // propulsion (it leaves slow and accelerates toward maxSpeed), its damage, and
+    // how hard it can manoeuvre (turnRate). Visuals and arrival sounds it carries
+    // too, as a projectile does.
+    struct Munition {
         std::string name;          // display name; defaults to the id if unspecified
+        Medium medium = Medium::Air; // air (missile) or water (torpedo)
         float range = 0.0f;        // metres: launch range, and the run distance before self-destruct
         float minRange = 0.0f;     // metres the warhead must travel to arm; a hit inside this does no damage
         float acceleration = 0.0f; // m/s^2 gained in flight, from rest toward maxSpeed
-        float maxSpeed = 0.0f;     // m/s the missile accelerates up to (loaded from topSpeed)
+        float maxSpeed = 0.0f;     // m/s the munition accelerates up to (loaded from topSpeed)
         float initialSpeed = 0.0f; // m/s it leaves a rail/canister at, along the launch bearing before acceleration builds; a VLS ignores it (leaves at rest)
         float damage = 0.0f;       // hit points removed from a hull it strikes
         float turnRate = 0.0f;     // radians/second its heading can steer toward the target (loaded from turnRateDegrees)
@@ -133,15 +146,15 @@ namespace naval::defs {
     // -pi/2 = port beam, +pi/2 = starboard beam) and a position on the hull
     // (local metres; +forward toward the bow, +lateral toward starboard).
     //
-    // A gun mount names a gun. A launcher mount names a launcher *and* the missile
+    // A gun mount names a gun. A launcher mount names a launcher *and* the munition
     // loaded in it, so the loadout lives here rather than on the launcher — the
-    // same launcher hardware carries different missiles on different ships without
+    // same launcher hardware carries different munitions on different ships without
     // duplicating its definition.
     struct Mount {
         MountType type = MountType::Gun;
         std::string gun;      // id into the gun table (gun mounts)
         std::string launcher; // id into the launcher table (launcher mounts)
-        std::string missile;  // id into the missile table (launcher mounts): the loaded round
+        std::string munition;  // id into the munition table (launcher mounts): the loaded round
         float bearing = 0.0f; // radians (loaded from bearingDegrees)
         float forwardM = 0.0f; // hull-local offset toward the bow
         float lateralM = 0.0f; // hull-local offset toward starboard
@@ -202,7 +215,7 @@ namespace naval::defs {
         Hull const& GetHull(std::string const& id) const;
         Gun const& GetGun(std::string const& id) const;
         Launcher const& GetLauncher(std::string const& id) const;
-        Missile const& GetMissile(std::string const& id) const;
+        Munition const& GetMunition(std::string const& id) const;
         Projectile const& GetProjectile(std::string const& id) const;
         Enemy const& GetEnemy(std::string const& id) const;
         Player const& GetPlayer() const;
@@ -216,7 +229,7 @@ namespace naval::defs {
         std::unordered_map<std::string, Hull> m_hulls;
         std::unordered_map<std::string, Gun> m_guns;
         std::unordered_map<std::string, Launcher> m_launchers;
-        std::unordered_map<std::string, Missile> m_missiles;
+        std::unordered_map<std::string, Munition> m_munitions;
         std::unordered_map<std::string, Projectile> m_projectiles;
         std::unordered_map<std::string, Enemy> m_enemies;
         std::unordered_map<std::string, Sound> m_sounds;

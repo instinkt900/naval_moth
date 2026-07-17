@@ -4,6 +4,7 @@
 #include "game/audio.h"
 #include "game/camera_shake.h"
 #include "game/components.h"
+#include "game/terrain.h"
 
 #include <box2d/box2d.h>
 
@@ -368,7 +369,7 @@ namespace naval {
                                                 -weapon.arcHalfAngle, weapon.arcHalfAngle);
 
                 // A launcher with no turn rate is a fixed tube — a canister bolted
-                // at its mount bearing that never slews, leaving the missile to
+                // at its mount bearing that never slews, leaving the munition to
                 // manoeuvre onto the target once it is away (this is how a real
                 // canister launcher works). It holds its lay at the mount bearing
                 // and counts as acquired at once. A launcher with a turn rate
@@ -431,7 +432,7 @@ namespace naval {
                     // it. Either way a launch needs a ready tube and the interval
                     // since the last one elapsed — that spacing is what makes a
                     // six-tube salvo six shots in quick succession rather than one
-                    // impossible instant. A launched missile homes, so unlike a gun
+                    // impossible instant. A launched munition homes, so unlike a gun
                     // the launcher does not wait on the mount being 'acquired'.
                     if (salvo) {
                         weapon.pending = std::min(weapon.salvoSize, weapon.readyTubes);
@@ -486,30 +487,31 @@ namespace naval {
                     shot.velocity = weapon.muzzleVelocity * aim;
                     shot.remaining = std::clamp(toFire.Length(), 0.0f, weapon.range);
                 } else {
-                    // A launcher throws a guided missile that flies itself,
+                    // A launcher throws a guided munition that flies itself,
                     // turning onto the target and building speed under its own
                     // power. Its reach is its self-contained run distance — it
                     // homes until it strikes or runs that out. How it leaves the
                     // mount is the one thing the launcher type decides: a VLS pops
                     // it up at rest (the vertical climb abstracted as acceleration
                     // from zero), while a rail/canister launcher sends it out along
-                    // the launch bearing at the missile's initial speed, before its
+                    // the launch bearing at the munition's initial speed, before its
                     // own acceleration builds. Either way guidance owns it the
                     // moment it is away.
                     if (weapon.kind == WeaponKind::VLS) {
                         shot.velocity = b2Vec2{ 0.0f, 0.0f };
                     } else {
                         float const railBearing = shipAngle + weapon.aimBearing;
-                        shot.velocity = weapon.missileInitialSpeed *
+                        shot.velocity = weapon.munitionInitialSpeed *
                                         b2Vec2{ std::cos(railBearing), std::sin(railBearing) };
                     }
                     shot.remaining = weapon.range;
                     shot.guidance = Guidance::Guided;
                     shot.homingTarget = target;
-                    shot.maxSpeed = weapon.missileMaxSpeed;
-                    shot.acceleration = weapon.missileAcceleration;
-                    shot.turnRate = weapon.missileTurnRate;
-                    shot.armDistance = weapon.missileMinRange;
+                    shot.maxSpeed = weapon.munitionMaxSpeed;
+                    shot.acceleration = weapon.munitionAcceleration;
+                    shot.turnRate = weapon.munitionTurnRate;
+                    shot.armDistance = weapon.munitionMinRange;
+                    shot.waterborne = weapon.munitionWaterborne;
                 }
                 spawned.push_back(shot);
 
@@ -542,7 +544,8 @@ namespace naval {
         }
     }
 
-    void UpdateProjectiles(entt::registry& registry, Audio& audio, CameraShake& shake, float dt) {
+    void UpdateProjectiles(entt::registry& registry, Audio& audio, CameraShake& shake,
+                           Terrain const& terrain, float dt) {
         std::vector<entt::entity> expired;   // projectiles to remove
         std::vector<entt::entity> destroyed; // hulls whose health reached zero
         std::vector<Splash> splashes;        // splashes for shots that fell short of any hull
@@ -554,7 +557,7 @@ namespace naval {
         for (auto entity : view) {
             auto& projectile = view.get<Projectile>(entity);
 
-            // A guided missile steers and accelerates before it is integrated. It
+            // A guided munition steers and accelerates before it is integrated. It
             // turns its heading toward the homing target at its turn rate and ramps
             // speed toward maxSpeed, so it leaves the cell at rest and drives in. A
             // target that sank or left the registry drops the lock: it holds its
@@ -619,13 +622,25 @@ namespace naval {
                 continue;
             }
 
+            // A torpedo that swims onto land beaches and is lost — quietly, since
+            // it is in the sea and not the air, so there is no surface splash. The
+            // captain is free to fire one into a shoreline; that it is wasted is
+            // their error, not something the launcher guards against.
+            if (projectile.waterborne && !terrain.IsWater(projectile.position, 0.0f)) {
+                expired.push_back(entity);
+                continue;
+            }
+
             // Fuze: the shot has run to its set range without striking a hull, so
             // it detonates — leave a splash where it went off, near the target it
-            // was aimed at.
+            // was aimed at. A waterborne munition (a torpedo) is already in the sea,
+            // so it simply stops and vanishes with no surface splash or sound.
             if (projectile.remaining <= 0.0f) {
                 expired.push_back(entity);
-                splashes.push_back(Splash{ projectile.position, 0.0f, projectile.radiusM });
-                audio.Play(projectile.splashSound, projectile.position);
+                if (!projectile.waterborne) {
+                    splashes.push_back(Splash{ projectile.position, 0.0f, projectile.radiusM });
+                    audio.Play(projectile.splashSound, projectile.position);
+                }
             }
         }
         for (auto entity : expired) {

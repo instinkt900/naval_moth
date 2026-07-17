@@ -8,6 +8,26 @@
         "fireSound": "launcher_basic",
         "fireShakeM": 0.3
     },
+    "mk41_32": {
+        "name": "Mark 41 VLS",
+        "type": "vls",
+        "tubes": 32,
+        "launchInterval": 0.4,
+        "reloadTime": 8.0,
+        "fireSound": "launcher_basic",
+        "fireShakeM": 0.3
+    },
+    "mk32": {
+        "name": "Mk 32 Torpedo Tubes",
+        "type": "launcher",
+        "tubes": 6,
+        "launchInterval": 1.0,
+        "reloadTime": 20.0,
+        "arcDegrees": 360.0,
+        "turnRateDegrees": 0.0,
+        "fireSound": "splash_large",
+        "fireShakeM": 0.3
+    },
     "harpoon_mk141": {
         "name": "Mk 141 Harpoon",
         "type": "launcher",

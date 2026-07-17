@@ -6,6 +6,7 @@
 namespace naval {
     class Audio;
     class CameraShake;
+    class Terrain;
     enum class Faction;
 
     // Aiming and firing, driven by each ship's FireOrder. A weapon acquires
@@ -33,13 +34,16 @@ namespace naval {
     // and only the camera knows the scale. Ties go to the nearest hull centre.
     entt::entity ContactAt(entt::registry& registry, b2Vec2 point, Faction faction, float pickRadiusM);
 
-    // Advances projectiles in a straight line and destroys those that have
-    // travelled their full range. A shot that expires without striking a hull
-    // leaves a splash entity where it fell. Shots are heard where they arrive —
-    // an impact on the hull they strike, a splash where they fall — and a hull
-    // destroyed by one is heard exploding. An impact and an explosion also knock
-    // the camera; a splash does not, having hit nothing.
-    void UpdateProjectiles(entt::registry& registry, Audio& audio, CameraShake& shake, float dt);
+    // Advances projectiles (ballistic shells and guided munitions) and destroys
+    // those that have run their course. A shot that expires without striking a
+    // hull leaves a splash where it fell — except a waterborne munition (a
+    // torpedo), which makes no surface splash and also beaches quietly if it
+    // swims onto land, which `terrain` is passed in to detect. Shots are heard
+    // where they arrive — an impact on the hull they strike, a splash where they
+    // fall — and a hull destroyed by one is heard exploding. An impact and an
+    // explosion also knock the camera; a splash does not, having hit nothing.
+    void UpdateProjectiles(entt::registry& registry, Audio& audio, CameraShake& shake,
+                           Terrain const& terrain, float dt);
 
     // Ages the splashes left by spent shots and removes those fully faded.
     void UpdateSplashes(entt::registry& registry, float dt);

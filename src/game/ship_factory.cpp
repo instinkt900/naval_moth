@@ -78,13 +78,13 @@ namespace naval {
                 weapon.fireShakeM = gunDef.fireShakeM;
             } else {
                 // A launcher's reach, damage and the shot's look/sound all come
-                // from the missile loaded at the mount; the launcher itself gives
+                // from the munition loaded at the mount; the launcher itself gives
                 // only how it aims (arc/train) and the launch report. A VLS is
                 // omnidirectional — a full-circle arc; other launchers carry the
                 // arc they were authored with, and a zero turn rate means a fixed
-                // tube the missile manoeuvres out of (see combat_system).
+                // tube the munition manoeuvres out of (see combat_system).
                 defs::Launcher const& launcherDef = db.GetLauncher(mount.launcher);
-                defs::Missile const& missileDef = db.GetMissile(mount.missile);
+                defs::Munition const& munitionDef = db.GetMunition(mount.munition);
                 weapon.kind = launcherDef.type == defs::LaunchType::VLS ? WeaponKind::VLS
                                                                         : WeaponKind::Launcher;
                 weapon.name = launcherDef.name;
@@ -96,7 +96,7 @@ namespace naval {
                 // wedge, so start it hidden — the player can toggle it on. A
                 // launcher with a real coverage wedge shows it, like a gun.
                 weapon.showArc = weapon.arcHalfAngle < (b2_pi - 1e-3f);
-                weapon.range = missileDef.range;
+                weapon.range = munitionDef.range;
                 // A launcher fires from a bank of tubes rather than on a cooldown:
                 // it starts fully loaded, and a salvo defaults to the whole bank.
                 weapon.tubeCount = launcherDef.tubes;
@@ -104,17 +104,18 @@ namespace naval {
                 weapon.launchInterval = launcherDef.launchInterval;
                 weapon.reloadTime = launcherDef.reloadTime;
                 weapon.salvoSize = launcherDef.tubes;
-                weapon.damage = missileDef.damage;
-                weapon.projectileRadiusM = missileDef.radiusM;
-                weapon.projectileColor = missileDef.color;
-                weapon.projectileImpactSound = audio.Find(missileDef.impactSound);
-                weapon.projectileSplashSound = audio.Find(missileDef.splashSound);
-                weapon.projectileImpactShakeM = missileDef.impactShakeM;
-                weapon.missileMaxSpeed = missileDef.maxSpeed;
-                weapon.missileAcceleration = missileDef.acceleration;
-                weapon.missileTurnRate = missileDef.turnRate;
-                weapon.missileMinRange = missileDef.minRange;
-                weapon.missileInitialSpeed = missileDef.initialSpeed;
+                weapon.damage = munitionDef.damage;
+                weapon.projectileRadiusM = munitionDef.radiusM;
+                weapon.projectileColor = munitionDef.color;
+                weapon.projectileImpactSound = audio.Find(munitionDef.impactSound);
+                weapon.projectileSplashSound = audio.Find(munitionDef.splashSound);
+                weapon.projectileImpactShakeM = munitionDef.impactShakeM;
+                weapon.munitionMaxSpeed = munitionDef.maxSpeed;
+                weapon.munitionAcceleration = munitionDef.acceleration;
+                weapon.munitionTurnRate = munitionDef.turnRate;
+                weapon.munitionMinRange = munitionDef.minRange;
+                weapon.munitionInitialSpeed = munitionDef.initialSpeed;
+                weapon.munitionWaterborne = munitionDef.medium == defs::Medium::Water;
                 weapon.fireSound = audio.Find(launcherDef.fireSound);
                 weapon.fireShakeM = launcherDef.fireShakeM;
             }

@@ -136,10 +136,14 @@ namespace naval::defs {
             db.m_launchers.emplace(id, l);
         }
 
-        nlohmann::json const missilesJson = ReadJson(dir / "missiles.json");
-        for (auto const& [id, j] : missilesJson.items()) {
-            Missile m;
+        nlohmann::json const munitionsJson = ReadJson(dir / "munitions.json");
+        for (auto const& [id, j] : munitionsJson.items()) {
+            Munition m;
             m.name = j.value("name", id);
+            std::string const medium = j.value("medium", std::string{ "air" });
+            Require(medium == "air" || medium == "water",
+                    "munition '" + id + "' medium must be \"air\" or \"water\"");
+            m.medium = medium == "water" ? Medium::Water : Medium::Air;
             m.range = j.at("range").get<float>();
             m.minRange = j.value("minRange", 0.0f);
             m.acceleration = j.at("acceleration").get<float>();
@@ -152,14 +156,14 @@ namespace naval::defs {
             m.impactSound = j.value("impactSound", std::string{});
             m.splashSound = j.value("splashSound", std::string{});
             m.impactShakeM = j.value("impactShakeM", 0.0f);
-            Require(m.range > 0.0f, "missile '" + id + "' range must be positive");
+            Require(m.range > 0.0f, "munition '" + id + "' range must be positive");
             Require(m.minRange >= 0.0f && m.minRange < m.range,
-                    "missile '" + id + "' minRange must be in [0, range)");
-            Require(m.acceleration > 0.0f, "missile '" + id + "' acceleration must be positive");
-            Require(m.maxSpeed > 0.0f, "missile '" + id + "' topSpeed must be positive");
-            Require(m.initialSpeed >= 0.0f, "missile '" + id + "' initialSpeed must not be negative");
-            Require(m.impactShakeM >= 0.0f, "missile '" + id + "' impactShakeM must not be negative");
-            db.m_missiles.emplace(id, m);
+                    "munition '" + id + "' minRange must be in [0, range)");
+            Require(m.acceleration > 0.0f, "munition '" + id + "' acceleration must be positive");
+            Require(m.maxSpeed > 0.0f, "munition '" + id + "' topSpeed must be positive");
+            Require(m.initialSpeed >= 0.0f, "munition '" + id + "' initialSpeed must not be negative");
+            Require(m.impactShakeM >= 0.0f, "munition '" + id + "' impactShakeM must not be negative");
+            db.m_munitions.emplace(id, m);
         }
 
         nlohmann::json const hullsJson = ReadJson(dir / "hulls.json");
@@ -208,7 +212,7 @@ namespace naval::defs {
                 } else {
                     m.type = MountType::Launcher;
                     m.launcher = jm.at("launcher").get<std::string>();
-                    m.missile = jm.at("missile").get<std::string>();
+                    m.munition = jm.at("munition").get<std::string>();
                 }
                 m.bearing = jm.at("bearingDegrees").get<float>() * moth_ui::kDegToRad;
                 m.forwardM = jm.value("forwardM", 0.0f);
@@ -245,9 +249,9 @@ namespace naval::defs {
         for (auto const& [id, launcher] : db.m_launchers) {
             requireSound(launcher.fireSound, "launcher '" + id + "'");
         }
-        for (auto const& [id, missile] : db.m_missiles) {
-            requireSound(missile.impactSound, "missile '" + id + "'");
-            requireSound(missile.splashSound, "missile '" + id + "'");
+        for (auto const& [id, munition] : db.m_munitions) {
+            requireSound(munition.impactSound, "munition '" + id + "'");
+            requireSound(munition.splashSound, "munition '" + id + "'");
         }
         for (auto const& [id, projectile] : db.m_projectiles) {
             requireSound(projectile.impactSound, "projectile '" + id + "'");
@@ -262,8 +266,8 @@ namespace naval::defs {
                 } else {
                     Require(db.m_launchers.count(mount.launcher) != 0,
                             "hull '" + id + "' mounts unknown launcher '" + mount.launcher + "'");
-                    Require(db.m_missiles.count(mount.missile) != 0,
-                            "hull '" + id + "' loads unknown missile '" + mount.missile + "'");
+                    Require(db.m_munitions.count(mount.munition) != 0,
+                            "hull '" + id + "' loads unknown munition '" + mount.munition + "'");
                 }
             }
         }
@@ -295,9 +299,9 @@ namespace naval::defs {
         return it->second;
     }
 
-    Missile const& Database::GetMissile(std::string const& id) const {
-        auto it = m_missiles.find(id);
-        Require(it != m_missiles.end(), "no missile '" + id + "'");
+    Munition const& Database::GetMunition(std::string const& id) const {
+        auto it = m_munitions.find(id);
+        Require(it != m_munitions.end(), "no munition '" + id + "'");
         return it->second;
     }
 

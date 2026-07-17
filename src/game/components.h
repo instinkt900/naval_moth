@@ -117,8 +117,8 @@ namespace naval {
     // aiming and the shot itself branch on this.
     enum class WeaponKind {
         Gun,      // trains a barrel within its arc and fires a ballistic shell along it
-        VLS,      // vertical launch: 360 arc, no training; releases a guided missile at rest
-        Launcher, // trainable rail: trains within its arc, then launches a guided missile along it
+        VLS,      // vertical launch: 360 arc, no training; releases a guided munition at rest
+        Launcher, // trainable rail: trains within its arc, then launches a guided munition along it
     };
 
     // A single weapon mounted on a ship. Static fields are resolved from the
@@ -151,16 +151,17 @@ namespace naval {
         int projectileSplashSound = kNoSound; // heard where a shot falls in the sea
         float projectileImpactShakeM = 0.0f;  // camera shake where a shot strikes a hull (m)
 
-        // Missile propulsion, cached from the loaded missile at spawn so a launch
+        // Munition propulsion, cached from the loaded munition at spawn so a launch
         // needs no lookup — the same trade the projectile stats above make. All
         // zero for a gun; for a launcher/VLS they seed the guided shot's flight.
         // The shot's reach and damage are already carried by range/damage above,
-        // populated from the missile for a launcher.
-        float missileMaxSpeed = 0.0f;     // m/s the missile accelerates up to
-        float missileAcceleration = 0.0f; // m/s^2 gained in flight
-        float missileTurnRate = 0.0f;     // rad/s its heading steers toward the target
-        float missileMinRange = 0.0f;     // m the missile must travel to arm; also the drawn dead-zone radius
-        float missileInitialSpeed = 0.0f; // m/s off the rail (Launcher kind); a VLS launches at rest
+        // populated from the munition for a launcher.
+        float munitionMaxSpeed = 0.0f;     // m/s the munition accelerates up to
+        float munitionAcceleration = 0.0f; // m/s^2 gained in flight
+        float munitionTurnRate = 0.0f;     // rad/s its heading steers toward the target
+        float munitionMinRange = 0.0f;     // m the munition must travel to arm; also the drawn dead-zone radius
+        float munitionInitialSpeed = 0.0f; // m/s off the rail (Launcher kind); a VLS launches at rest
+        bool munitionWaterborne = false;   // true for a torpedo (water medium); it swims and makes no surface splash
 
         // Launcher tubes. A launcher fires from a pool of ready tubes rather than
         // on a single cooldown: up to readyTubes launch in quick succession, each
@@ -367,7 +368,7 @@ namespace naval {
     };
 
     // How a projectile flies. A ballistic shot holds a constant velocity; a
-    // guided missile steers toward its homing target and accelerates as it goes.
+    // guided munition steers toward its homing target and accelerates as it goes.
     enum class Guidance {
         Ballistic,
         Guided,
@@ -381,7 +382,7 @@ namespace naval {
     // distance (plus a little random spread) so a miss splashes near the target
     // rather than flying on to the weapon's max range.
     //
-    // Guided (a launcher's missile): each tick it turns its heading toward the
+    // Guided (a launcher's munition): each tick it turns its heading toward the
     // homing target at `turnRate` and ramps its speed toward `maxSpeed` by
     // `acceleration`, so it leaves the cell slow and accelerates in. `remaining`
     // is its self-contained run distance: it flies until it strikes a hull or
@@ -396,21 +397,26 @@ namespace naval {
         moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike
 
-        // Guidance and the missile fields it needs; all inert for a ballistic
-        // shot. homingTarget is the hull the missile steers toward, cleared to
+        // Guidance and the munition fields it needs; all inert for a ballistic
+        // shot. homingTarget is the hull the munition steers toward, cleared to
         // null once it is no longer a valid live contact.
         Guidance guidance = Guidance::Ballistic;
         entt::entity homingTarget = entt::null; // hull steered toward, or null once lock is lost
-        float maxSpeed = 0.0f;                  // m/s the missile accelerates up to
+        float maxSpeed = 0.0f;                  // m/s the munition accelerates up to
         float acceleration = 0.0f;              // m/s^2 gained in flight
         float turnRate = 0.0f;                  // rad/s the heading steers toward the target
 
-        // Warhead arming: distance (m) the missile must still travel before it is
+        // Warhead arming: distance (m) the munition must still travel before it is
         // live. Counts down with the run; a strike while it is above zero is a dud
-        // — the missile is spent but does no damage and detonates nothing, which
+        // — the munition is spent but does no damage and detonates nothing, which
         // is what gives a launcher a minimum range. Zero (a ballistic shot, or a
-        // missile with no minimum range) is armed from the muzzle.
+        // munition with no minimum range) is armed from the muzzle.
         float armDistance = 0.0f;
+
+        // A waterborne munition (a torpedo) is already in the sea, so when it runs
+        // out its range it simply stops rather than throwing up a surface splash.
+        // False for shells and air-launched missiles, which splash where they fall.
+        bool waterborne = false;
 
         // What the shot does when it arrives, carried on the shot itself because
         // the weapon that fired it may be gone — sunk — by the time it lands.

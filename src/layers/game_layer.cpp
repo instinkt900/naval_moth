@@ -198,7 +198,7 @@ namespace naval {
         UpdateWander(m_registry, m_terrain, dt);
         UpdatePropulsion(m_registry, dt);
         UpdateWeapons(m_registry, m_audio, m_shake, dt);
-        UpdateProjectiles(m_registry, m_audio, m_shake, dt);
+        UpdateProjectiles(m_registry, m_audio, m_shake, m_terrain, dt);
         UpdateSplashes(m_registry, dt);
         m_world.Step(dt, 8, 3);
 
@@ -523,7 +523,7 @@ namespace naval {
                 ImGui::SameLine();
                 ImGui::Checkbox("Show spread", &weapon.showSpread);
             } else {
-                // How many missiles a Salvo order releases from this launcher: a
+                // How many munitions a Salvo order releases from this launcher: a
                 // scroll limited to the tubes ready to fire, since it can send no
                 // more than are loaded. Standing Fire ignores it and ripples the
                 // whole bank out regardless.
@@ -581,7 +581,7 @@ namespace naval {
         };
 
         // Guns and launchers are listed apart, each under its own heading, so the
-        // battery reads as two systems — the gun line and the missile cells —
+        // battery reads as two systems — the gun line and the munition cells —
         // rather than one mixed list. A heading shows only if the ship carries
         // that kind.
         auto drawGroup = [&](char const* heading, bool wantGun) {

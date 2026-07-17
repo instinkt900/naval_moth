@@ -296,6 +296,14 @@ machinery as the milestones that consume them land.
 - Submarines as a ship class (dive/surface state).
 - Torpedo weapons.
 - Sonar mechanics for detecting submerged contacts.
+- **Programmed munition routes.** Let a guided munition be given a route — a
+  series of waypoints it runs before its seeker takes over — instead of homing
+  from the instant it launches. A torpedo could be steered around a headland
+  rather than swimming into it; a Harpoon could be routed to come in on a bearing
+  that skirts a target's point defence. The terminal homing stays exactly as it
+  is now; this only adds a pre-seek path in front of it. A natural companion to
+  ship pathfinding below — the same waypoint idea, aimed by the captain rather
+  than solved by the ship.
 - **Pathfinding around land.** Today a move order steers straight at the
   destination, so a course that crosses land just grinds the hull against the
   shore. A ship could instead route around intervening land — finding a path to

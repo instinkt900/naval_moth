@@ -1,6 +1,7 @@
 {
     "rim162_essm": {
         "name": "RIM-162 ESSM",
+        "medium": "air",
         "range": 2500.0,
         "minRange": 300.0,
         "acceleration": 150.0,
@@ -15,6 +16,7 @@
     },
     "rgm84_harpoon": {
         "name": "RGM-84 Harpoon",
+        "medium": "air",
         "range": 4000.0,
         "minRange": 500.0,
         "acceleration": 80.0,
@@ -27,5 +29,20 @@
         "impactSound": "impact_large",
         "splashSound": "splash_large",
         "impactShakeM": 1.5
+    },
+    "mu90_torpedo": {
+        "name": "MU90 Torpedo",
+        "medium": "water",
+        "range": 1500.0,
+        "minRange": 100.0,
+        "acceleration": 12.0,
+        "topSpeed": 28.0,
+        "initialSpeed": 15.0,
+        "damage": 70.0,
+        "turnRateDegrees": 60.0,
+        "radiusM": 0.6,
+        "color": [0.70, 0.85, 0.90, 1.0],
+        "impactSound": "explosion",
+        "impactShakeM": 1.2
     }
 }

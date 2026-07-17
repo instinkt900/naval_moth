@@ -36,8 +36,9 @@
             { "type": "gun", "gun": "m2_browning", "bearingDegrees": 90.0, "forwardM": 6.0, "lateralM": 6.5 },
             { "type": "gun", "gun": "m2_browning", "bearingDegrees": -90.0, "forwardM": 6.0, "lateralM": -6.5 },
             { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -32.0, "lateralM": 0.0 },
-            { "type": "launcher", "launcher": "mk41", "missile": "rim162_essm", "bearingDegrees": 0.0, "forwardM": 22.0, "lateralM": 0.0 },
-            { "type": "launcher", "launcher": "harpoon_mk141", "missile": "rgm84_harpoon", "bearingDegrees": 0.0, "forwardM": -8.0, "lateralM": 0.0 }
+            { "type": "launcher", "launcher": "mk41", "munition": "rim162_essm", "bearingDegrees": 0.0, "forwardM": 22.0, "lateralM": 0.0 },
+            { "type": "launcher", "launcher": "harpoon_mk141", "munition": "rgm84_harpoon", "bearingDegrees": 0.0, "forwardM": -8.0, "lateralM": 0.0 },
+            { "type": "launcher", "launcher": "mk32", "munition": "mu90_torpedo", "bearingDegrees": 0.0, "forwardM": -18.0, "lateralM": 0.0 }
         ]
     },
     "destroyer": {
@@ -55,8 +56,11 @@
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
             { "type": "gun", "gun": "mk45", "bearingDegrees": 0.0, "forwardM": 48.0, "lateralM": 0.0 },
+            { "type": "launcher", "launcher": "mk41_32", "munition": "rim162_essm", "bearingDegrees": 0.0, "forwardM": 32.0, "lateralM": 0.0 },
             { "type": "gun", "gun": "typhoon_25", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 7.0 },
             { "type": "gun", "gun": "typhoon_25", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -7.0 },
+            { "type": "launcher", "launcher": "harpoon_mk141", "munition": "rgm84_harpoon", "bearingDegrees": 0.0, "forwardM": -12.0, "lateralM": 0.0 },
+            { "type": "launcher", "launcher": "mk32", "munition": "mu90_torpedo", "bearingDegrees": 0.0, "forwardM": -25.0, "lateralM": 0.0 },
             { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -40.0, "lateralM": 0.0 }
         ]
     },
