@@ -259,17 +259,21 @@ namespace naval {
         }
 
         // The munition a point-defence mount engages this tick: the one it was
-        // already tracking (`held`) if that is still a live threat inside its arc
-        // that no earlier mount has taken, otherwise the nearest unclaimed threat it
-        // can bear on. Holding the current mark is what commits a mount from the
-        // moment it starts slewing — it keeps and re-claims its target across ticks
-        // rather than re-picking the nearest each tick and swapping onto another
-        // mount's mark as the missiles close.
+        // already tracking (`held`) if that is still a live threat inside its arc,
+        // otherwise the nearest unclaimed threat it can bear on. Holding the current
+        // mark is what commits a mount from the moment it starts slewing — it keeps
+        // its target across ticks rather than re-picking the nearest each tick and
+        // swapping onto another mount's mark as the missiles close.
+        //
+        // The held branch does not consult `claimed`: a mark that survives to here
+        // was reserved for this mount by the reservation pre-pass in UpdateWeapons
+        // (which runs before any mount acquires), so its presence in `claimed` is
+        // this mount's own reservation, not a rival's. A mark another mount holds was
+        // already cleared to null before this call and so never reaches the branch.
         entt::entity SelectMunition(entt::registry& registry, entt::entity held, Faction defend,
                                     b2Vec2 origin, float arcCentre, float range, float arcHalfAngle,
                                     std::vector<entt::entity> const& claimed) {
             if (IsInboundMunition(registry, held, defend) &&
-                std::find(claimed.begin(), claimed.end(), held) == claimed.end() &&
                 PointInSector(registry.get<Projectile>(held).position, origin, arcCentre, range, arcHalfAngle)) {
                 return held;
             }
@@ -362,6 +366,44 @@ namespace naval {
         // consider it, and the shared list never crosses the sides.
         std::vector<entt::entity> claimedMunitions;
 
+        // Reservation pre-pass. A point-defence mount owns its mark until the
+        // missile leaves that mount's arc, and that ownership has to beat every
+        // other mount's fresh acquisition regardless of the order the battery is
+        // walked in. The single main pass below cannot express that on its own: it
+        // interleaves re-claims and new acquisitions in mount order, so a nearer
+        // mount walked earlier this tick would snatch a missile another mount was
+        // already onto, and the threat gets hot-potatoed across every overlapping
+        // arc it crosses. So reserve every still-valid held mark up front — before a
+        // single mount picks a new one — using the same inbound-and-in-arc predicate
+        // the main pass holds on. A held mark that is gone or has left the arc is
+        // dropped to null here, freeing it for the pool; the main pass then only
+        // acquires the genuinely unclaimed. The set of mounts walked here mirrors the
+        // main pass exactly (same view, same enabled gate), so nothing is reserved
+        // that the main pass would not have processed.
+        for (auto shooter : registry.view<Physics, Armament, FireOrder, Combatant>()) {
+            Faction const ownFaction = registry.get<Combatant>(shooter).faction;
+            b2Body* body = registry.get<Physics>(shooter).body;
+            float const shipAngle = body->GetAngle();
+            for (auto& weapon : registry.get<Armament>(shooter).weapons) {
+                if (!weapon.pointDefense || !weapon.enabled || weapon.target == entt::null) {
+                    continue;
+                }
+                float const arcCentre = shipAngle + weapon.bearing;
+                b2Vec2 const mountPos = body->GetWorldPoint(weapon.mountOffset);
+                bool const holds =
+                    IsInboundMunition(registry, weapon.target, ownFaction) &&
+                    std::find(claimedMunitions.begin(), claimedMunitions.end(), weapon.target) ==
+                        claimedMunitions.end() &&
+                    PointInSector(registry.get<Projectile>(weapon.target).position, mountPos, arcCentre,
+                                  weapon.range, weapon.arcHalfAngle);
+                if (holds) {
+                    claimedMunitions.push_back(weapon.target);
+                } else {
+                    weapon.target = entt::null;
+                }
+            }
+        }
+
         auto shooters = registry.view<Physics, Armament, FireOrder>();
 
         for (auto shooter : shooters) {
@@ -422,8 +464,13 @@ namespace naval {
                     // so the next mount engages the next threat rather than piling
                     // onto this one. Claimed the moment it is locked — while the mount
                     // is still slewing on, not only once it opens fire — since it is
-                    // committed to this mark either way.
-                    claimedMunitions.push_back(munition);
+                    // committed to this mark either way. A held mark was already
+                    // reserved by the pre-pass above, so only a freshly acquired one
+                    // is added here.
+                    if (std::find(claimedMunitions.begin(), claimedMunitions.end(), munition) ==
+                        claimedMunitions.end()) {
+                        claimedMunitions.push_back(munition);
+                    }
 
                     // Train the barrel onto the missile so the drawn lay tracks it.
                     // The hit itself does not depend on the lay (see below), so this
