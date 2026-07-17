@@ -1,0 +1,113 @@
+name: Release
+
+# Manual only: pick a tag and this builds Release binaries for Linux and
+# Windows, bundles each with the assets the game loads at runtime, and publishes
+# them to a GitHub Release under that tag.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runs_on: ubuntu-latest
+            configure_preset: conan-release
+          - os: windows
+            runs_on: windows-2022
+            configure_preset: conan-default
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Conan
+        uses: conan-io/setup-conan@v1
+        with:
+          cache_packages: true
+
+      # moth_graphics (and its moth_ui dependency) live on a private Artifactory
+      # remote rather than Conan Center. It is publicly readable, so no login is
+      # needed to install from it.
+      - name: Add moth remote
+        run: conan remote add moth https://artifactory.matthewcotton.net/artifactory/api/conan/conan-local --force
+
+      # The .conan/profile installs the Linux system libraries (SDL2 etc.) via
+      # apt, so no separate dependency step is needed here.
+      - name: Configure and build
+        shell: bash
+        run: |
+          conan install . -pr .conan/profile -s build_type=Release --build=missing
+          cmake --preset ${{ matrix.configure_preset }}
+          cmake --build --preset conan-release --config Release
+
+      - name: Install to staging (Linux)
+        if: matrix.os == 'linux'
+        run: cmake --install build/Release --config Release --prefix staging
+
+      - name: Install to staging (Windows)
+        if: matrix.os == 'windows'
+        run: cmake --install build --config Release --prefix staging
+
+      # The binary loads assets/data as a relative path, so the archive lays the
+      # executable and the assets side by side: unzip and run from that folder.
+      # Any DLLs Conan built (if a dependency resolved shared) are swept in next
+      # to the .exe so the Windows build runs standalone; a fully static build
+      # simply finds none.
+      - name: Assemble package
+        shell: bash
+        run: |
+          pkg="naval_moth-${{ inputs.tag }}-${{ matrix.os }}"
+          mkdir -p "$pkg"
+          cp -r staging/bin/. "$pkg"/
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            find build -name '*.dll' -exec cp -n {} "$pkg"/ \; || true
+          fi
+          cp -r assets "$pkg"/assets
+
+      - name: Archive (Linux)
+        if: matrix.os == 'linux'
+        run: tar czf "naval_moth-${{ inputs.tag }}-linux.tar.gz" "naval_moth-${{ inputs.tag }}-linux"
+
+      - name: Archive (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: Compress-Archive -Path "naval_moth-${{ inputs.tag }}-windows" -DestinationPath "naval_moth-${{ inputs.tag }}-windows.zip"
+
+      - name: Upload archive as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: naval_moth-${{ matrix.os }}
+          path: |
+            naval_moth-${{ inputs.tag }}-*.tar.gz
+            naval_moth-${{ inputs.tag }}-*.zip
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: "naval_moth ${{ inputs.tag }}"
+          files: release-assets/*
