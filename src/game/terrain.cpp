@@ -27,7 +27,7 @@ namespace naval {
         // metres instead explodes the cell count as the world grows, which is what
         // tanks performance at low zoom. ~20 cells per wavelength reproduces the
         // fidelity the small-scale world shipped with.
-        constexpr float kCellsPerWavelength = 20.0f;
+        constexpr float kCellsPerWavelength = 40.0f;
         constexpr float kCellM = 1.0f / (kNoiseFreq * kCellsPerWavelength); // ~167 m
         constexpr int kChunkCells = 12;   // cells per chunk edge
         constexpr float kChunkM = kCellM * static_cast<float>(kChunkCells);

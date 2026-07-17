@@ -92,6 +92,7 @@ namespace naval {
                 weapon.kind = launcherDef.type == defs::LaunchType::VLS ? WeaponKind::VLS
                                                                         : WeaponKind::Launcher;
                 weapon.name = launcherDef.name;
+                weapon.munitionName = munitionDef.name;
                 weapon.arcHalfAngle =
                     launcherDef.type == defs::LaunchType::VLS ? b2_pi : launcherDef.arcHalfAngle;
                 weapon.turnRate = launcherDef.turnRate;
@@ -107,6 +108,8 @@ namespace naval {
                 weapon.salvoSize = 1;
                 weapon.damage = munitionDef.damage;
                 weapon.projectileRadiusM = munitionDef.radiusM;
+                weapon.munitionDrawLengthM = munitionDef.drawLengthM;
+                weapon.munitionDrawWidthM = munitionDef.drawWidthM;
                 weapon.projectileColor = munitionDef.color;
                 weapon.projectileImpactSound = audio.Find(munitionDef.impactSound);
                 weapon.projectileSplashSound = audio.Find(munitionDef.splashSound);

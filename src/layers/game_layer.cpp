@@ -532,6 +532,13 @@ namespace naval {
                 ImGui::SameLine();
                 ImGui::Checkbox("Show spread", &weapon.showSpread);
             } else {
+                // A launcher's character is what it is loaded with, so name the
+                // munition beside it, greyed to read as a subtitle to the mount.
+                if (!weapon.munitionName.empty()) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(%s)", weapon.munitionName.c_str());
+                }
+
                 // How many munitions a Salvo order releases from this launcher: a
                 // scroll limited to the tubes ready to fire, since it can send no
                 // more than are loaded. Standing Fire ignores it and ripples the

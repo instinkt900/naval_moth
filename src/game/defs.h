@@ -147,7 +147,14 @@ namespace naval::defs {
         // reach of these guns. 0 (the default) leaves the munition impervious to
         // point defence: a deliberate lever for a round too fast or small to stop.
         float health = 0.0f;
-        float radiusM = 0.0f;      // draw radius, metres
+        // A munition draws as a rectangle laid along its travel (dimensionsM
+        // below), not a circle, so radiusM here is not its drawn size: it is the
+        // scalar the round is treated as everywhere a size other than the drawing
+        // is needed — its collision footprint against a hull, the target disc a
+        // point-defence gun tries to hit, and the scale the splash grows from.
+        float radiusM = 0.0f;      // metres: collision / point-defence / splash size (not the drawn shape)
+        float drawLengthM = 0.0f;  // metres, along travel: the in-flight rectangle's length (loaded from dimensionsM[0])
+        float drawWidthM = 0.0f;   // metres, across the beam: the in-flight rectangle's width (loaded from dimensionsM[1])
         moth_ui::Color color;
         std::string impactSound; // id into the sound table; empty = silent
         std::string splashSound; // id into the sound table; empty = silent

@@ -287,7 +287,7 @@ namespace naval {
             // mark (see combat_system). The arc's own hue, but far fainter — a
             // thin hint of the lay, not a second bright edge competing with the
             // arc it sits inside.
-            graphics.SetColor(moth_ui::Color{ arcColor.r, arcColor.g, arcColor.b, arcColor.a * 0.8f });
+            graphics.SetColor(moth_ui::Color{ arcColor.r, arcColor.g, arcColor.b, arcColor.a * 0.6f });
             graphics.DrawLineF(originPx, edge(shipAngle + weapon.aimBearing));
         }
 
@@ -410,8 +410,8 @@ namespace naval {
             graphics.SetTransform(moth_ui::FloatMat4x4::Translation(posPx) *
                                   moth_ui::FloatMat4x4::Rotation(angleDeg, { 0.0f, 0.0f }));
 
-            float const halfLenPx = camera.MToPx(projectile.radiusM * 2.0f);
-            float const halfWidPx = camera.MToPx(projectile.radiusM * 0.6f);
+            float const halfLenPx = camera.MToPx(projectile.drawLengthM * 0.5f);
+            float const halfWidPx = camera.MToPx(projectile.drawWidthM * 0.5f);
             std::array<moth_ui::FloatVec2, 4> const shape{ {
                 { halfLenPx, -halfWidPx },
                 { halfLenPx, halfWidPx },

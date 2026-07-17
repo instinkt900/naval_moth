@@ -798,6 +798,8 @@ namespace naval {
                     }
                     shot.remaining = weapon.range;
                     shot.guidance = Guidance::Guided;
+                    shot.drawLengthM = weapon.munitionDrawLengthM; // draws as a rect laid along travel
+                    shot.drawWidthM = weapon.munitionDrawWidthM;
                     shot.health = weapon.munitionHealth; // what point defence must chew through
                     shot.homingTarget = target;
                     shot.maxSpeed = weapon.munitionMaxSpeed;

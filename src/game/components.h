@@ -141,6 +141,7 @@ namespace naval {
         bool pointDefense = false;
 
         std::string name;                   // weapon display name (the def's name, or its id), for the readout
+        std::string munitionName;           // launcher only: the loaded munition's name, for the readout; empty for a gun
         float bearing = 0.0f;               // rad, mount direction relative to bow
         b2Vec2 mountOffset{ 0.0f, 0.0f };   // hull-local mount position (m)
         float arcHalfAngle = 0.0f;          // rad, half-width of the firing arc
@@ -176,6 +177,12 @@ namespace naval {
         float munitionInitialSpeed = 0.0f; // m/s off the rail (Launcher kind); a VLS launches at rest
         bool munitionWaterborne = false;   // true for a torpedo (water medium); it swims and makes no surface splash
         float munitionHealth = 0.0f;       // warhead health stamped on each launched munition, for point defence to whittle down; 0 = the munition cannot be shot down
+        // The guided munition's drawn rectangle, cached from the munition; both
+        // zero for a gun, whose ballistic shot draws as a circle of
+        // projectileRadiusM instead. Cosmetic only — the shot's collision, point
+        // defence and splash size all read projectileRadiusM.
+        float munitionDrawLengthM = 0.0f;  // m, along travel
+        float munitionDrawWidthM = 0.0f;   // m, across the beam
 
         // Launcher tubes. A launcher fires from a pool of ready tubes rather than
         // on a single cooldown: up to readyTubes launch in quick succession, each
@@ -416,7 +423,12 @@ namespace naval {
         b2Vec2 position{ 0.0f, 0.0f }; // world space (metres)
         b2Vec2 velocity{ 0.0f, 0.0f }; // m/s
         float remaining = 0.0f;        // m of travel left: fuze range (ballistic) or run distance (guided)
-        float radiusM = 0.0f;          // draw radius, metres
+        float radiusM = 0.0f;          // metres: draw radius when ballistic; always the collision / point-defence / splash size
+        // A guided munition draws as a rectangle laid along its travel rather than
+        // a circle (see DrawProjectiles); these are its length and width in metres.
+        // Both zero for a ballistic shot, which draws as a circle of radiusM.
+        float drawLengthM = 0.0f;      // m, along travel
+        float drawWidthM = 0.0f;       // m, across the beam
         float damage = 0.0f;           // hit points removed from the hull it strikes
         moth_ui::Color color;          // draw colour
         Faction target = Faction::Enemy; // the faction this shot may strike

@@ -167,6 +167,11 @@ namespace naval::defs {
             // default) leaves the munition impossible to shoot down.
             m.health = j.value("health", 0.0f);
             m.radiusM = j.at("radiusM").get<float>();
+            auto const& dims = j.at("dimensionsM");
+            Require(dims.is_array() && dims.size() == 2,
+                    "munition '" + id + "' dimensionsM must be a [length, width] pair");
+            m.drawLengthM = dims[0].get<float>();
+            m.drawWidthM = dims[1].get<float>();
             m.color = ParseColor(j.at("color"));
             m.impactSound = j.value("impactSound", std::string{});
             m.splashSound = j.value("splashSound", std::string{});
@@ -179,6 +184,8 @@ namespace naval::defs {
             Require(m.initialSpeed >= 0.0f, "munition '" + id + "' initialSpeed must not be negative");
             Require(m.health >= 0.0f, "munition '" + id + "' health must not be negative");
             Require(m.impactShakeM >= 0.0f, "munition '" + id + "' impactShakeM must not be negative");
+            Require(m.drawLengthM > 0.0f && m.drawWidthM > 0.0f,
+                    "munition '" + id + "' dimensionsM must both be positive");
             db.m_munitions.emplace(id, m);
         }
 

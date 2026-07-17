@@ -51,7 +51,7 @@
     },
     "minigun_loop": {
         "file": "audio/MinigunLoop.wav",
-        "volume": 0.4,
+        "volume": 0.2,
         "looping": true
     }
 }
