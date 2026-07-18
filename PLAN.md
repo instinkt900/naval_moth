@@ -515,6 +515,26 @@ has to get past the shore's own defences — is a mission type as much as a feat
   momentum-driven handling that makes maneuvering a skill. Not needed while the
   seas are mostly open, but a natural fit once land is common enough to get in
   the way.
+- **Heightmap-defined maps.** Today's terrain is an endless streamed field of
+  Perlin noise run through marching squares into coastline edges. A designed,
+  finite map could instead be authored as a **heightmap** — a field of elevation
+  values — fed through the same coastline machinery, so a specific archipelago,
+  strait, or headland can be laid out by hand rather than left to noise. A single
+  **waterline** value is all that separates sea from shore: everything below it is
+  water, everything above is land, and the coastline is simply the contour where
+  the map crosses that value — so raising or lowering the waterline reshapes the
+  coast without redrawing it. It slots in as an alternate source for the field
+  the terrain system already consumes, not a new terrain pipeline.
+- **Terrain that blocks fire.** The natural companion to a heightmap: once land
+  carries an elevation rather than just a wet/dry flag, the height above the
+  waterline can **mask gunnery and missiles**. A ridge or mountain between shooter
+  and target breaks the line of fire — a ballistic shell has to clear it and a
+  low-flying missile is stopped by it — so terrain becomes part of the firing
+  solution, not just something a hull runs aground on. This is where the top-down
+  model gains a sliver of real verticality (a shot's height over the ground versus
+  the ground's height under it), and where the coastal batteries of *Land targets*
+  and the routed munitions above earn their keep: a battery tucked behind a
+  headland has to be reached over the crest or steered around it.
 
 ## Milestones
 
