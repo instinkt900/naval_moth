@@ -121,13 +121,21 @@ namespace naval {
                                                { targetPx.x + 8.0f, targetPx.y + 8.0f } });
     }
 
-    void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera) {
+    void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera,
+                   entt::entity viewer, ContactPicture const& picture) {
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         // The scene otherwise draws opaque (BlendMode::Replace ignores alpha), so
         // switch to alpha blending for the fading marks, then hand it back so the
         // rest of the frame is unaffected.
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
         for (auto entity : registry.view<Renderable, Wake>()) {
+            // Same fog rule as the hull render in the layer: the viewer's own
+            // trail, a detected contact's, or a wreck's; an undetected enemy's
+            // wake is not on the player's water.
+            if (entity != viewer && picture.contacts.count(entity) == 0 &&
+                !registry.all_of<Sinking>(entity)) {
+                continue;
+            }
             auto const& renderable = registry.get<Renderable>(entity);
             auto const& wake = registry.get<Wake>(entity);
             float const startR = renderable.halfBeamM * kWakeStartBeamFrac;

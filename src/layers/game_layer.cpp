@@ -5,6 +5,7 @@
 #include "game/components.h"
 #include "game/propulsion_system.h"
 #include "game/render_system.h"
+#include "game/sensor_system.h"
 #include "game/ship_factory.h"
 #include "game/wake_system.h"
 #include "game/wander_system.h"
@@ -50,44 +51,34 @@ namespace naval {
     }
 
     void GameLayer::SpawnEnemies() {
-        // Place each enemy at a random bearing and distance in a ring around the
-        // player start, retrying until the point (and a small clearance around
-        // it) is open water; a slot that never lands in water is skipped rather
-        // than looping forever.
-        constexpr int kEnemyCount = 6;
+        // Radar sandbox: a single enemy at a random bearing and distance around
+        // the player start, so detection can be developed against one contact at
+        // a time. Retries until the point (and a small clearance around it) is
+        // open water; gives up rather than looping forever if it never lands in
+        // water. Restore the multi-enemy fan-out (six pickets, or the varied
+        // fleet `i < 2 ? "escort" : "raider"` — missile-armed frigates with point
+        // defence among gun-only raiders) once the sandbox has served its purpose.
         constexpr float kMinDistM = 1000.0f;  // no closer than this to the player
         constexpr float kMaxDistM = 28000.0f; // no farther than this out
-        constexpr float kClearanceM = 60.0f; // keep the hull clear of any shore
-        constexpr int kMaxAttempts = 64;     // give up on a slot after this many tries
+        constexpr float kClearanceM = 60.0f;  // keep the hull clear of any shore
+        constexpr int kMaxAttempts = 64;      // give up after this many tries
 
-        // Give each enemy its own angular slice (with jitter inside it) so they
-        // fan out around the player instead of clustering on one bearing, and
-        // scatter the range across the whole band.
-        float const slice = (2.0f * b2_pi) / static_cast<float>(kEnemyCount);
         std::mt19937 rng{ std::random_device{}() };
-        std::uniform_real_distribution<float> jitterDist(-slice * 0.4f, slice * 0.4f);
+        std::uniform_real_distribution<float> bearingDist(0.0f, 2.0f * b2_pi);
         std::uniform_real_distribution<float> distDist(kMinDistM, kMaxDistM);
         std::uniform_real_distribution<float> headingDist(0.0f, 2.0f * b2_pi);
 
-        for (int i = 0; i < kEnemyCount; ++i) {
-            for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
-                float const angle = (slice * static_cast<float>(i)) + jitterDist(rng);
-                float const radius = distDist(rng);
-                b2Vec2 const point{ m_camera.center.x + (radius * std::cos(angle)),
-                                    m_camera.center.y + (radius * std::sin(angle)) };
-                if (m_terrain.IsWater(point, kClearanceM)) {
-                    // Debug scenario: a ring of single-launcher pickets, so only one
-                    // weapon type is ever in the air and the missile/CIWS exchange is
-                    // easy to read one shot at a time. For a full fight, swap this for
-                    // the varied fleet — `i < 2 ? "escort" : "raider"`, missile-armed
-                    // frigates with their own point defence among gun-only raiders.
-                    char const* const enemyId = "picket";
-                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, m_audio, enemyId, point);
-                    // Point each enemy in a random direction so they aren't all
-                    // bow-up; the spawn point is kept, only the heading changes.
-                    m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
-                    break;
-                }
+        for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+            float const bearing = bearingDist(rng);
+            float const radius = distDist(rng);
+            b2Vec2 const point{ m_camera.center.x + (radius * std::cos(bearing)),
+                                m_camera.center.y + (radius * std::sin(bearing)) };
+            if (m_terrain.IsWater(point, kClearanceM)) {
+                entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, m_audio, "picket", point);
+                // Point it in a random direction so it isn't bow-up; the spawn
+                // point is kept, only the heading changes.
+                m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
+                break;
             }
         }
     }
@@ -116,8 +107,14 @@ namespace naval {
         // when it has shrunk to a speck at survey zoom than when it fills the
         // view — the sea below is a big target, but a ship on it isn't.
         constexpr float kPickPx = 8.0f;
-        entt::entity const contact =
+        entt::entity contact =
             ContactAt(m_registry, world, Faction::Enemy, kPickPx / m_camera.pixelsPerMeter);
+        // You can only designate what you can see: a contact the player's own
+        // sensors do not hold is not clickable, however precisely it is clicked.
+        if (contact != entt::null &&
+            m_registry.get<ContactPicture>(m_ship).contacts.count(contact) == 0) {
+            contact = entt::null;
+        }
         if (contact != entt::null) {
             auto& order = m_registry.get<FireOrder>(m_ship);
             // Designating never opens fire by itself — that is the Fire button's
@@ -195,6 +192,12 @@ namespace naval {
         m_audio.SetListener(m_camera);
         m_shake.SetCamera(m_camera);
 
+        // Refresh each ship's contact picture before anything reads it — the
+        // aggro steering below, the render loop, and target-picking all consult
+        // what a ship can detect, so its picture must be current first. (Only the
+        // player carries one today; the enemy aggro still scans hulls directly.)
+        UpdateSensors(m_registry, dt);
+
         // Enemies that sense a foe within aggro range break off to manoeuvre and
         // fight; the rest wander. Aggro runs first so it can claim the helm, and
         // wander then handles only the ships still on patrol. It also issues each
@@ -229,8 +232,13 @@ namespace naval {
     void GameLayer::Draw() {
         m_terrain.Draw(m_graphics, m_camera);
 
+        // The player's own picture of the sea gates every enemy visual below —
+        // hulls, wakes and arcs all draw only for a contact it actually holds, so
+        // an undetected enemy leaves nothing on the water (see UpdateSensors).
+        auto const& picture = m_registry.get<ContactPicture>(m_ship);
+
         // Wakes on the water, beneath everything else the ships lay down.
-        DrawWakes(m_graphics, m_registry, m_camera);
+        DrawWakes(m_graphics, m_registry, m_camera, m_ship, picture);
 
         // Splashes from spent shots, on the water alongside the wakes.
         DrawSplashes(m_graphics, m_registry, m_camera);
@@ -240,10 +248,13 @@ namespace naval {
             DrawAggroRing(m_graphics, m_registry, m_camera, ship);
         }
 
-        // Firing arcs beneath the hulls, for every armed ship still alive. Enemy
-        // arcs can be hidden via the debug toggle; the player's own always draw.
+        // Firing arcs beneath the hulls, for every armed ship still alive. An
+        // enemy's arcs are fog-gated like its hull (nothing for an undetected
+        // contact) and can be hidden even when detected via the debug toggle; the
+        // player's own always draw.
         for (auto ship : m_registry.view<Physics, Armament>()) {
-            if (!m_showEnemyArcs && m_registry.get<Combatant>(ship).faction == Faction::Enemy) {
+            if (m_registry.get<Combatant>(ship).faction == Faction::Enemy &&
+                (!m_showEnemyArcs || picture.contacts.count(ship) == 0)) {
                 continue;
             }
             DrawArcs(m_graphics, m_registry, m_camera, ship);
@@ -255,11 +266,18 @@ namespace naval {
         // hull it encircles at any zoom, so only another ship can cover it.
         DrawTargetMarker(m_graphics, m_registry, m_camera, m_ship);
 
-        // Hulls on top; the player's is drawn last so it stays the topmost.
+        // Hulls on top; the player's is drawn last so it stays the topmost. An
+        // enemy hull is drawn only while the player's picture holds it; a wreck is
+        // exempt (it has shed the Combatant the picture is keyed on, and is the
+        // visible aftermath of a fight the player was in).
         for (auto ship : m_registry.view<Physics, Renderable>()) {
-            if (ship != m_ship) {
-                DrawShip(m_graphics, m_registry, m_camera, ship);
+            if (ship == m_ship) {
+                continue;
             }
+            if (picture.contacts.count(ship) == 0 && !m_registry.all_of<Sinking>(ship)) {
+                continue;
+            }
+            DrawShip(m_graphics, m_registry, m_camera, ship);
         }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
         DrawProjectiles(m_graphics, m_registry, m_camera);

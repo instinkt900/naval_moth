@@ -206,7 +206,8 @@ namespace naval::defs {
         float aftShoulder = kHullShoulder;          // aft taper shoulder position, 0-1 factor of the half-length
         float aftShoulderBeam = kHullShoulderBeam;  // beam at the aft shoulder, 0-1 factor of the half-beam
         float angularDamping = 0.0f;
-        float health = 0.0f; // hit points; 0 means the hull is not destructible
+        float health = 0.0f;       // hit points; 0 means the hull is not destructible
+        float visualRangeM = 0.0f; // m; range inside which this hull sees contacts outright (no radar)
         moth_ui::Color color;
         std::string explosionSound; // id into the sound table, played as it dies; empty = silent
         float explosionShakeM = 0.0f; // metres of camera shake at full effect as it dies; 0 = none

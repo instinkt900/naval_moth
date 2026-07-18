@@ -374,22 +374,75 @@ beneath it — that decides what a ship knows about, rather than every hull on t
 sea being drawn outright. A ship holds the contacts its own sensors (and, later,
 its fleet's) can reach; the rest of the sea is empty until something sweeps it.
 
-This is what lets the game keep **true weapon ranges** rather than the
+**Knowledge is per ship.** Each hull carries its own picture of the sea — the set
+of contacts *it* holds and how well — rather than there being one omniscient truth
+the game reveals. Two ships can legitimately disagree about what is out there, and
+that is the point: it is what a shared fleet picture (see *Fleet command*) later
+merges, and what makes going dark mean something. (While there is a single player
+ship the enemy is left omniscient, so only the player's picture is gated at first;
+the enemy earns its own picture when the fight is made two-sided.)
+
+### The detection ladder
+
+Knowing about a contact is not one bit but a ladder of certainty, each rung a
+better answer bought a different way:
+
+- **Undetected.** Nothing. The hull is out there but the ship holds no trace of
+  it, and it is not drawn at all.
+- **Bearing only (passive).** The ship's passive sensors hear the contact's
+  emissions and give a *bearing* — a line out from own ship — with no range and no
+  identity. Silent to obtain: listening gives nothing away.
+- **Ranged (active).** An active sweep returns a bearing *and* a range, fixing the
+  contact to a position on the water, though still an unidentified one.
+- **Identified.** Held long enough or closely enough, the contact resolves — its
+  class, heading and speed become known and tracked.
+- **Visual.** Inside a hull's visual range the contact is simply *seen*: the real
+  ship on the water, full truth, no sensor needed. This is the close-in view the
+  game already draws, and the reason a knife-fight needs no radar at all.
+
+A contact does not fall off the ladder the instant it is lost: one that drops out
+of sensor reach **decays** from its last-known position rather than vanishing, so
+the picture carries a little history and a stale track reads differently from a
+fresh one.
+
+### Active versus passive is the central choice
+
+The two ways of sensing trade the same coin from opposite sides. **Active radar**
+buys range — it fixes a contact to a point — but it *broadcasts*: the moment a
+ship sweeps, anyone listening passively gets a bearing on it (this is the EMCON
+lever of *Defending against gunfire*, seen from the sensor side). **Passive**
+listening is silent and gives away nothing, but yields only a bearing. So the
+captain's standing question is whether the fix is worth the exposure: go active
+and see clearly but be seen, or stay dark and hunt on bearings alone.
+
+Getting a range *without* going active is the hard, rewarding path: **target
+motion analysis** solves it from a passive bearing held over time while own ship
+manoeuvres — the way the bearing walks against your own movement betrays the
+contact's range. It is a real solver, not a toggle, and pays patience and
+deliberate manoeuvre with a firing solution that cost no emission. (The deep end
+of the sensor game; it arrives after the simpler rungs are in.)
+
+### The tactical view is the ladder made visible
+
+This is also what lets the game keep **true weapon ranges** rather than the
 divided-by-10 convention (see *Data & content*). Real naval reach only becomes a
 problem when a fight happens off the edge of a ship-sprite view; give the player a
 way to *read* that fight and the reach becomes the point rather than the problem.
 So the picture changes with the zoom:
 
 - **Zoomed in**, the view is what it is today — hull shapes on the water, shells
-  and wakes, a fight you watch happen.
+  and wakes, a fight you watch happen. This is the visual rung, drawn literally.
 - **Zoomed out**, that literal picture fades into a **tactical plot**: contacts
-  become markers with names, bearings and tracks, the way a radar readout or a
+  become markers at the certainty the ship has earned on each — a bare bearing
+  wedge, an unidentified return, a named track — the way a radar readout or a
   plotting table reads. The sea stops being a place you watch and becomes a map
   you command from.
 
 The two are the same world at different scales, not two modes to switch between —
 pulling back trades the visual for the strategic continuously, so a captain
 surveying the whole engagement sees a plot and a captain down in it sees the guns.
+The detection ladder is what the plot draws: each contact appears at exactly the
+rung the ship has earned on it.
 
 ## Defending against gunfire
 

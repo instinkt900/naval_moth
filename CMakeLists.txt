@@ -22,6 +22,7 @@ set(SOURCES ${SOURCES}
 	src/game/miniaudio_impl.cpp
 	src/game/propulsion_system.cpp
 	src/game/render_system.cpp
+	src/game/sensor_system.cpp
 	src/game/ship_factory.cpp
 	src/game/terrain.cpp
 	src/game/wake_system.cpp

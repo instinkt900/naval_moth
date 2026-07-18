@@ -8,6 +8,7 @@
 #include <moth_ui/utils/color.h>
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace naval {
@@ -349,6 +350,51 @@ namespace naval {
     // hull gives none), for labelling a contact in the controls readout.
     struct Identity {
         std::string name;
+    };
+
+    // A ship's detection reach — how far its own senses carry. Only the ranges
+    // the current sensor step implements are populated; the rest of the sensor
+    // suite (active/passive radar) fills these out as those steps land. Authored
+    // per hull in data, so a bigger ship with a taller mast can see farther.
+    //
+    // visualRangeM is the range inside which a contact is simply *seen* — the
+    // real hull on the water, full truth, no radar needed (the Visual rung of the
+    // detection ladder in PLAN's *Sensors & the tactical view*). Beyond it a ship
+    // knows only what its radar tells it, which is nothing yet.
+    struct Sensors {
+        float visualRangeM = 0.0f; // m; a contact within this is seen outright
+    };
+
+    // The rungs of the detection ladder (PLAN's *Sensors & the tactical view*),
+    // ordered from least to most certain. A ship's knowledge of a contact climbs
+    // these as its sensors resolve it. Only Visual is produced today; the passive
+    // and active rungs arrive with the radar steps that earn them.
+    enum class DetectLevel {
+        Bearing,    // passive: a bearing out from own ship, no range or identity
+        Ranged,     // active: bearing + range, a fixed position, still unidentified
+        Identified, // class, heading and speed resolved
+        Visual,     // inside visual range: the real hull, full truth
+    };
+
+    // What one observing ship knows about one contact, at the moment its picture
+    // was last refreshed. Held in a ContactPicture, keyed by the observed hull's
+    // entity. Fields beyond the level fill in as the rungs that need them (a
+    // last-known position for a lost track, a solved range, a bearing) arrive.
+    struct Contact {
+        DetectLevel level = DetectLevel::Bearing;
+    };
+
+    // A ship's own picture of the sea: every contact it holds and how well it
+    // holds each. Per observer, not one global truth the game reveals — two ships
+    // can legitimately disagree about what is out there, which is exactly what a
+    // shared fleet picture (see PLAN's *Fleet command*) will later merge. While
+    // there is a single player ship only it carries a picture; the enemy is left
+    // omniscient (the aggro system still scans every hull directly) until the
+    // fight is made two-sided. The sensor system rebuilds this each tick; the
+    // renderer and the target-picking both read it, so what the player cannot
+    // detect it can neither see nor designate.
+    struct ContactPicture {
+        std::unordered_map<entt::entity, Contact> contacts;
     };
 
     // The sounds a hull itself makes, as opposed to the ones its guns and their

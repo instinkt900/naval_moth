@@ -18,7 +18,7 @@ namespace naval {
         float steerageThrottle = 0.3f;   // minimum ahead bell held while turning, to keep rudder authority
         float steerageErrorRad = 0.25f;  // heading error at which the steerage bell reaches full
         float switchMarginRad = 0.3f;    // a rival arc must beat the current one by this much to steal the helm
-        bool showRings = true;           // draw the aggro-range ring around each AI ship
+        bool showRings = false;          // draw the aggro-range ring around each AI ship (debug; off by default, since it reveals an undetected enemy's position)
     };
 
     // The one live tuning block. A mutable static behind an accessor so the

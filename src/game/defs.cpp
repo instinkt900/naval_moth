@@ -248,6 +248,8 @@ namespace naval::defs {
             }
             h.angularDamping = j.at("angularDamping").get<float>();
             h.health = j.value("health", 0.0f);
+            h.visualRangeM = j.at("visualRangeM").get<float>();
+            Require(h.visualRangeM > 0.0f, "hull '" + id + "' visualRangeM must be positive");
             h.color = ParseColor(j.at("color"));
             h.explosionSound = j.value("explosionSound", std::string{});
             h.explosionShakeM = j.value("explosionShakeM", 0.0f);

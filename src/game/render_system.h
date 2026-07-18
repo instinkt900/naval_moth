@@ -8,6 +8,7 @@ namespace moth_graphics::graphics {
 
 namespace naval {
     struct Camera;
+    struct ContactPicture;
 
     // Rendering. Read-only over the ECS registry; draws the scene through
     // IGraphics, mapping world metres to screen pixels through the camera. The
@@ -38,8 +39,12 @@ namespace naval {
     // nothing when no contact is designated.
     void DrawTargetMarker(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
-    // Every hull's fading wake, drawn on the water beneath the hulls.
-    void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera);
+    // Every visible hull's fading wake, drawn on the water beneath the hulls.
+    // Fog-gated like the hulls themselves: a wake is drawn only for `viewer`, for
+    // a contact in its `picture`, or for a wreck — an undetected enemy leaves no
+    // trail on the player's water any more than it leaves a hull.
+    void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera,
+                   entt::entity viewer, ContactPicture const& picture);
 
     // Every splash left by a spent shot, expanding and fading on the water.
     void DrawSplashes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera);

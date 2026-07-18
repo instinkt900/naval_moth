@@ -47,6 +47,15 @@ namespace naval {
                                                          hull.foreShoulder, hull.foreShoulderBeam,
                                                          hull.aftShoulder, hull.aftShoulderBeam });
         registry.emplace<Identity>(entity, Identity{ hull.name });
+        registry.emplace<Sensors>(entity, Sensors{ hull.visualRangeM });
+        // Only the player keeps a contact picture; the enemy is left omniscient
+        // (its aggro system scans hulls directly) until the fight is two-sided, so
+        // giving it a picture now would be dead weight the sensor system fills and
+        // nothing reads. The player's picture is what gates its rendering and
+        // target-picking to what it can actually detect.
+        if (faction == Faction::Player) {
+            registry.emplace<ContactPicture>(entity, ContactPicture{});
+        }
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
         registry.emplace<Helm>(entity, Helm{});
         registry.emplace<Wake>(entity, Wake{});
