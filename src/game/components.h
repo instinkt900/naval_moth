@@ -368,10 +368,21 @@ namespace naval {
     // is why activeOn is a runtime toggle and not a property of the hull: going
     // active buys the ranged picture at the cost (once the enemy can listen) of
     // announcing own position. It starts off — silent is the default posture.
+    //
+    // passiveRangeM anchors how far the passive ESM hears — but only a contact
+    // that is itself *radiating* (its own activeOn), and only as a bearing, never
+    // a range. It is not a flat cutoff: it is the range at which an emitter *as
+    // loud as this ship's own radar* falls to the hearing floor. A louder emitter
+    // (a bigger activeRangeM) is heard proportionally farther, a quieter one only
+    // closer, and how strong the cut is conflates the two (see Contact::strength).
+    // Passive listening is always on and costs nothing to own emissions, so this
+    // is what a dark ship reads the sea with: it hears a careless emitter's
+    // direction well out, and the price of ranging that bearing is going active.
     struct Sensors {
-        float visualRangeM = 0.0f; // m; a contact within this is seen outright
-        float activeRangeM = 0.0f; // m; active radar reach — a contact within this (beyond visual) is a ranged blip while radiating
-        bool activeOn = false;     // whether the active radar is radiating; off = emit nothing, hold only visual contacts
+        float visualRangeM = 0.0f;  // m; a contact within this is seen outright
+        float activeRangeM = 0.0f;  // m; active radar reach — a contact within this (beyond visual) is a ranged blip while radiating
+        float passiveRangeM = 0.0f; // m; passive ESM reach — an *emitting* contact within this is heard as a bearing, no range
+        bool activeOn = false;      // whether the active radar is radiating; off = emit nothing, hold only visual + passive contacts
     };
 
     // The rungs of the detection ladder (PLAN's *Sensors & the tactical view*),
@@ -388,9 +399,27 @@ namespace naval {
     // What one observing ship knows about one contact, at the moment its picture
     // was last refreshed. Held in a ContactPicture, keyed by the observed hull's
     // entity. Fields beyond the level fill in as the rungs that need them (a
-    // last-known position for a lost track, a solved range, a bearing) arrive.
+    // last-known position for a lost track, a solved range) arrive.
     struct Contact {
         DetectLevel level = DetectLevel::Bearing;
+
+        // World bearing from the observer to the contact (radians) — the one thing
+        // a passive detection yields, and all it yields. Meaningful only at the
+        // Bearing rung; a Ranged or Visual contact carries its true position on the
+        // hull instead and is drawn from that. Held here rather than re-derived at
+        // draw time precisely so the range is *not* available to the renderer: a
+        // bearing-only contact must not be placeable, or it would leak the range
+        // passive listening never gave.
+        float bearing = 0.0f;
+
+        // Normalised passive signal strength in [0, 1] — 0 at the edge of hearing,
+        // 1 for a loud, near cut. Meaningful only at the Bearing rung. It is a
+        // function of the *received* signal alone (emitter power over distance
+        // squared), which is what makes it deliberately ambiguous: a large emitter
+        // far off and a small one close can read the same, so strength hints at
+        // "big or near" without ever giving the range apart. The renderer shows it
+        // as the wedge's brightness and how tight a cut it is.
+        float strength = 0.0f;
     };
 
     // A ship's own picture of the sea: every contact it holds and how well it

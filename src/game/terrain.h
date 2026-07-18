@@ -27,9 +27,14 @@ namespace naval {
     // static Box2D edges (for collision), so ships simply cannot cross a shore.
     class Terrain {
     public:
-        Terrain(b2World& world, uint32_t seed);
+        // `enabled` false is an open-water testing mode: no chunks are ever
+        // streamed in (so no land, no coastline collision), and IsWater answers
+        // true everywhere. Draw still paints the open sea, since it clears to the
+        // sea colour and then simply has no resident chunks to paint land from.
+        Terrain(b2World& world, uint32_t seed, bool enabled = true);
 
-        // Stream chunks in/out to cover the camera's view (plus a margin).
+        // Stream chunks in/out to cover the camera's view (plus a margin). A no-op
+        // while disabled, which is what keeps the world open water.
         void Update(Camera const& camera);
 
         // Draw the whole seascape: clears to the open-sea colour, then paints the
@@ -71,6 +76,7 @@ namespace naval {
 
         b2World& m_world;
         Noise m_noise;
+        bool m_enabled;
         std::unordered_map<int64_t, Chunk> m_chunks;
     };
 }

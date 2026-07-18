@@ -39,10 +39,11 @@ namespace naval {
     // nothing when no contact is designated.
     void DrawTargetMarker(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
-    // The viewer's own radar picture over the sea, drawn only while its active
-    // radar is radiating: a faint ring at the reach it is buying, and a blip at
-    // every contact the sweep paints — including one that has closed into visual
-    // range, which keeps its mark on top of its hull so the plot stays complete.
+    // The viewer's own sensor picture over the sea. Passive ESM bearings — a line
+    // struck out toward an emitting contact, its length the signal strength, no
+    // range — draw always, since listening is free. The active radar's reach ring
+    // and a blip over every contact it paints (including one closed into visual
+    // range, which keeps its mark atop its hull) draw only while radiating.
     void DrawContacts(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer);
 
     // Every visible hull's fading wake, drawn on the water beneath the hulls.

@@ -34,7 +34,7 @@ namespace naval {
     GameLayer::GameLayer(moth_graphics::graphics::IGraphics& graphics, int widthPx, int heightPx)
         : m_graphics(graphics)
         , m_world(b2Vec2{ 0.0f, 0.0f }) // top-down: no gravity
-        , m_terrain(m_world, 1337u)
+        , m_terrain(m_world, 1337u, false) // open water while developing the sensor work; pass true to restore land
         , m_db(defs::Database::Load("assets/data")) {
         m_camera.viewSize = { static_cast<float>(widthPx), static_cast<float>(heightPx) };
         // Populate the starting neighbourhood so land is present on frame zero.
@@ -51,34 +51,44 @@ namespace naval {
     }
 
     void GameLayer::SpawnEnemies() {
-        // Radar sandbox: a single enemy at a random bearing and distance around
-        // the player start, so detection can be developed against one contact at
-        // a time. Retries until the point (and a small clearance around it) is
-        // open water; gives up rather than looping forever if it never lands in
-        // water. Restore the multi-enemy fan-out (six pickets, or the varied
-        // fleet `i < 2 ? "escort" : "raider"` — missile-armed frigates with point
-        // defence among gun-only raiders) once the sandbox has served its purpose.
-        constexpr float kMinDistM = 1000.0f;  // no closer than this to the player
+        // Radar sandbox: a few enemies of mixed class at random bearings and
+        // distances, so the passive plot shows several contacts at once to compare
+        // — different radar sizes (hence signal strengths) on different bearings.
+        // Each placement retries until the point (and a small clearance around it)
+        // is open water; a class that never lands in water is skipped rather than
+        // looping forever. Restore the full fleet spawn once the sandbox is done.
         constexpr float kMaxDistM = 28000.0f; // no farther than this out
         constexpr float kClearanceM = 60.0f;  // keep the hull clear of any shore
-        constexpr int kMaxAttempts = 64;      // give up after this many tries
+        constexpr int kMaxAttempts = 64;      // give up on a class after this many tries
+
+        // Keep every enemy outside the player's own visual range so it starts as a
+        // sensor contact — a blip or a bearing — never an already-seen hull. Keyed
+        // off the player's visual reach (plus a margin) so it tracks the data.
+        constexpr float kVisualMarginM = 1000.0f;
+        float const minDistM = m_registry.get<Sensors>(m_ship).visualRangeM + kVisualMarginM;
+
+        // Mixed classes so their radar power — and so the passive signal strength
+        // — differs: a loud escort against quieter raider and picket.
+        char const* const enemyIds[] = { "escort", "raider", "picket" };
 
         std::mt19937 rng{ std::random_device{}() };
         std::uniform_real_distribution<float> bearingDist(0.0f, 2.0f * b2_pi);
-        std::uniform_real_distribution<float> distDist(kMinDistM, kMaxDistM);
+        std::uniform_real_distribution<float> distDist(minDistM, kMaxDistM);
         std::uniform_real_distribution<float> headingDist(0.0f, 2.0f * b2_pi);
 
-        for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
-            float const bearing = bearingDist(rng);
-            float const radius = distDist(rng);
-            b2Vec2 const point{ m_camera.center.x + (radius * std::cos(bearing)),
-                                m_camera.center.y + (radius * std::sin(bearing)) };
-            if (m_terrain.IsWater(point, kClearanceM)) {
-                entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, m_audio, "picket", point);
-                // Point it in a random direction so it isn't bow-up; the spawn
-                // point is kept, only the heading changes.
-                m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
-                break;
+        for (char const* const enemyId : enemyIds) {
+            for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+                float const bearing = bearingDist(rng);
+                float const radius = distDist(rng);
+                b2Vec2 const point{ m_camera.center.x + (radius * std::cos(bearing)),
+                                    m_camera.center.y + (radius * std::sin(bearing)) };
+                if (m_terrain.IsWater(point, kClearanceM)) {
+                    entt::entity const enemy = SpawnEnemy(m_registry, m_world, m_db, m_audio, enemyId, point);
+                    // Point it in a random direction so it isn't bow-up; the spawn
+                    // point is kept, only the heading changes.
+                    m_registry.get<Physics>(enemy).body->SetTransform(point, headingDist(rng));
+                    break;
+                }
             }
         }
     }
@@ -109,11 +119,16 @@ namespace naval {
         constexpr float kPickPx = 8.0f;
         entt::entity contact =
             ContactAt(m_registry, world, Faction::Enemy, kPickPx / m_camera.pixelsPerMeter);
-        // You can only designate what you can see: a contact the player's own
-        // sensors do not hold is not clickable, however precisely it is clicked.
-        if (contact != entt::null &&
-            m_registry.get<ContactPicture>(m_ship).contacts.count(contact) == 0) {
-            contact = entt::null;
+        // Designation needs a *fix*, not just an awareness: a contact the player
+        // holds only as a passive bearing (or does not hold at all) has no known
+        // position to lay guns on, so it cannot be engaged until radar or the eye
+        // gives it a range. A ranged or visual contact can.
+        if (contact != entt::null) {
+            auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
+            auto const it = contacts.find(contact);
+            if (it == contacts.end() || it->second.level == DetectLevel::Bearing) {
+                contact = entt::null;
+            }
         }
         if (contact != entt::null) {
             auto& order = m_registry.get<FireOrder>(m_ship);
@@ -282,9 +297,8 @@ namespace naval {
         }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
 
-        // Radar blips over every contact the sweep paints (a close one keeps its
-        // mark atop its hull), plus the active radar's reach ring — drawn only
-        // while radiating.
+        // The player's sensor picture: passive ESM bearing lines (always), and the
+        // active radar's reach ring and contact blips while radiating.
         DrawContacts(m_graphics, m_registry, m_camera, m_ship);
 
         DrawProjectiles(m_graphics, m_registry, m_camera);
@@ -431,11 +445,15 @@ namespace naval {
         // Sensors. Active radar lights up contacts out to the set reach as
         // unidentified blips; it starts off (silent — the EMCON posture), and
         // turning it on will, once the enemy can listen, announce own position.
+        // Passive ESM needs no toggle: it is always listening, and hears an
+        // emitting contact as a bearing (a wedge on the water) whatever the radar
+        // is doing.
         ImGui::Separator();
         auto& sensors = m_registry.get<Sensors>(m_ship);
         ImGui::Checkbox("Active radar", &sensors.activeOn);
-        ImGui::TextUnformatted(fmt::format("Visual {:.0f} km   Radar {:.0f} km",
-                                           sensors.visualRangeM / 1000.0f, sensors.activeRangeM / 1000.0f)
+        ImGui::TextUnformatted(fmt::format("Visual {:.0f}   Radar {:.0f}   ESM {:.0f} km",
+                                           sensors.visualRangeM / 1000.0f, sensors.activeRangeM / 1000.0f,
+                                           sensors.passiveRangeM / 1000.0f)
                                    .c_str());
 
         ImGui::End();

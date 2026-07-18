@@ -32,6 +32,7 @@ namespace naval {
         const moth_ui::Color kCiwsMuzzleColor{ 1.00f, 0.95f, 0.70f, 1.0f };       // point-defence muzzle flash and target sparkle
         const moth_ui::Color kContactColor{ 0.45f, 0.85f, 0.75f, 0.90f };         // radar contact blip (any contact the sweep paints)
         const moth_ui::Color kRadarRingColor{ 0.45f, 0.85f, 0.75f, 0.14f };       // active radar reach, drawn while radiating
+        const moth_ui::Color kBearingColor{ 0.95f, 0.88f, 0.25f, 0.85f };         // passive ESM bearing line (direction, no range; length = strength)
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -126,44 +127,71 @@ namespace naval {
     void DrawContacts(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer) {
         auto const* sensors = registry.try_get<Sensors>(viewer);
         auto const* picture = registry.try_get<ContactPicture>(viewer);
-        // Nothing to paint while the radar is silent: a blip is a radar return, so
-        // with the set down even a contact held by eye carries no mark.
-        if (sensors == nullptr || picture == nullptr || !sensors->activeOn) {
+        if (sensors == nullptr || picture == nullptr) {
             return;
         }
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
 
-        // The active radar's reach: a faint ring about own ship, so the range the
-        // sweep is buying is legible on the water.
-        graphics.SetColor(kRadarRingColor);
-        moth_ui::FloatVec2 const selfPx = camera.WorldToScreen(registry.get<Physics>(viewer).body->GetPosition());
-        DrawCircle(graphics, selfPx, camera.MToPx(sensors->activeRangeM));
+        b2Vec2 const selfPos = registry.get<Physics>(viewer).body->GetPosition();
+        moth_ui::FloatVec2 const selfPx = camera.WorldToScreen(selfPos);
 
-        // A blip for every contact the radar is painting, whether or not its hull
-        // is also drawn: a contact that has closed into visual range keeps its mark
-        // rather than losing it to the hull, so the plot stays complete and a speck
-        // at survey zoom stays findable. The blip is a fixed screen-size glyph, not
-        // scaled to the hull — a radar return is a position, not a size — and an
-        // open diamond keeps it distinct from the target ring (a circle) and the
-        // waypoint marker (a boxed dot).
-        graphics.SetColor(kContactColor);
-        constexpr float kBlipPx = 8.0f;
+        // Passive ESM bearings, drawn whatever own radar is doing — listening is
+        // always on. An emitting contact heard but not ranged is a single line
+        // struck out from own ship along its bearing: a direction, with the range
+        // deliberately unknown. Built from the stored bearing in world space (never
+        // the hull's true position) so no range can leak in. The stronger the
+        // signal the longer the line — a loud, near or big emitter reaches out
+        // toward passive range, a faint one is a short stub — which reads as "big
+        // or near" without ever telling the two apart (see Contact::strength).
+        graphics.SetColor(kBearingColor);
+        constexpr float kMinLenFrac = 0.12f; // shortest line, as a fraction of the drawn reach
+        constexpr float kLenScale = 0.1f;    // line length as a fraction of passive reach at full strength
         for (auto const& entry : picture->contacts) {
-            entt::entity const entity = entry.first;
-            if (!registry.valid(entity)) {
+            Contact const& contact = entry.second;
+            if (contact.level != DetectLevel::Bearing) {
                 continue;
             }
-            auto const* physics = registry.try_get<Physics>(entity);
-            if (physics == nullptr) {
-                continue;
+            float const len =
+                sensors->passiveRangeM * kLenScale * (kMinLenFrac + ((1.0f - kMinLenFrac) * contact.strength));
+            b2Vec2 const end{ selfPos.x + (len * std::cos(contact.bearing)),
+                              selfPos.y + (len * std::sin(contact.bearing)) };
+            graphics.DrawLineF(selfPx, camera.WorldToScreen(end));
+        }
+
+        // Active radar, only while radiating: its reach ring, and a blip over every
+        // contact the sweep paints. A contact that has closed into visual range
+        // keeps its mark atop its hull, so the plot stays complete and a speck at
+        // survey zoom stays findable; a bearing-only contact has no position to
+        // blip and is skipped. The blip is a fixed screen-size glyph, not scaled to
+        // the hull — a radar return is a position, not a size — and an open diamond
+        // keeps it distinct from the target ring (a circle) and the waypoint marker
+        // (a boxed dot).
+        if (sensors->activeOn) {
+            graphics.SetColor(kRadarRingColor);
+            DrawCircle(graphics, selfPx, camera.MToPx(sensors->activeRangeM));
+
+            graphics.SetColor(kContactColor);
+            constexpr float kBlipPx = 8.0f;
+            for (auto const& entry : picture->contacts) {
+                if (entry.second.level == DetectLevel::Bearing) {
+                    continue;
+                }
+                entt::entity const entity = entry.first;
+                if (!registry.valid(entity)) {
+                    continue;
+                }
+                auto const* physics = registry.try_get<Physics>(entity);
+                if (physics == nullptr) {
+                    continue;
+                }
+                moth_ui::FloatVec2 const p = camera.WorldToScreen(physics->body->GetPosition());
+                graphics.DrawLineF({ p.x, p.y - kBlipPx }, { p.x + kBlipPx, p.y });
+                graphics.DrawLineF({ p.x + kBlipPx, p.y }, { p.x, p.y + kBlipPx });
+                graphics.DrawLineF({ p.x, p.y + kBlipPx }, { p.x - kBlipPx, p.y });
+                graphics.DrawLineF({ p.x - kBlipPx, p.y }, { p.x, p.y - kBlipPx });
             }
-            moth_ui::FloatVec2 const p = camera.WorldToScreen(physics->body->GetPosition());
-            graphics.DrawLineF({ p.x, p.y - kBlipPx }, { p.x + kBlipPx, p.y });
-            graphics.DrawLineF({ p.x + kBlipPx, p.y }, { p.x, p.y + kBlipPx });
-            graphics.DrawLineF({ p.x, p.y + kBlipPx }, { p.x - kBlipPx, p.y });
-            graphics.DrawLineF({ p.x - kBlipPx, p.y }, { p.x, p.y - kBlipPx });
         }
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }

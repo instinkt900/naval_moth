@@ -53,9 +53,10 @@ namespace naval {
         }
     }
 
-    Terrain::Terrain(b2World& world, uint32_t seed)
+    Terrain::Terrain(b2World& world, uint32_t seed, bool enabled)
         : m_world(world)
-        , m_noise(seed) {}
+        , m_noise(seed)
+        , m_enabled(enabled) {}
 
     float Terrain::Height(float worldX, float worldY) const {
         float h = m_noise.Fbm(worldX * kNoiseFreq, worldY * kNoiseFreq, kOctaves, kLacunarity, kGain) - kSeaLevel;
@@ -67,6 +68,10 @@ namespace naval {
     }
 
     bool Terrain::IsWater(b2Vec2 point, float clearanceM) const {
+        // Open-water mode: the whole sea is spawnable, nothing to clear.
+        if (!m_enabled) {
+            return true;
+        }
         // Land is height > 0; the shore is the height == 0 contour where the
         // collision edges live. Rejecting any positive height within the ring
         // keeps a spawned hull off the coastline in every direction.
@@ -186,6 +191,11 @@ namespace naval {
     }
 
     void Terrain::Update(Camera const& camera) {
+        // Open-water mode: stream nothing, so no land ever appears and no
+        // coastline collision is installed.
+        if (!m_enabled) {
+            return;
+        }
         if (camera.pixelsPerMeter <= 0.0f) {
             return;
         }

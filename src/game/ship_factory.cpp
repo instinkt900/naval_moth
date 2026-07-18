@@ -47,7 +47,12 @@ namespace naval {
                                                          hull.foreShoulder, hull.foreShoulderBeam,
                                                          hull.aftShoulder, hull.aftShoulderBeam });
         registry.emplace<Identity>(entity, Identity{ hull.name });
-        registry.emplace<Sensors>(entity, Sensors{ hull.visualRangeM, hull.activeRangeM });
+        // Enemies radiate by default so the player's passive ESM has something to
+        // hear (and, being omniscient, they give up nothing by it); the player
+        // starts silent and chooses when to go active. A placeholder until enemy
+        // EMCON is a decision of its own.
+        registry.emplace<Sensors>(entity, Sensors{ hull.visualRangeM, hull.activeRangeM,
+                                                   hull.passiveRangeM, faction == Faction::Enemy });
         // Only the player keeps a contact picture; the enemy is left omniscient
         // (its aggro system scans hulls directly) until the fight is two-sided, so
         // giving it a picture now would be dead weight the sensor system fills and
