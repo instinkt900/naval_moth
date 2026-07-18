@@ -10,13 +10,13 @@ namespace naval {
         for (auto self : observers) {
             b2Vec2 const selfPos = observers.get<Physics>(self).body->GetPosition();
             Faction const faction = observers.get<Combatant>(self).faction;
-            float const visualM = observers.get<Sensors>(self).visualRangeM;
+            Sensors const& sensors = observers.get<Sensors>(self);
 
-            // Rebuilt from scratch each tick: with only the Visual rung, a contact
-            // is either in reach now or it is not, and there is no history to keep.
-            // Contact decay — carrying a lost track on from its last-known position
-            // — is what turns this into an update-in-place rather than a rebuild,
-            // and arrives with the step that adds it.
+            // Rebuilt from scratch each tick: a contact is held at whatever rung it
+            // is in reach of *now*, with no history to keep. Contact decay —
+            // carrying a lost track on from its last-known position — is what turns
+            // this into an update-in-place rather than a rebuild, and arrives with
+            // the step that adds it.
             auto& picture = observers.get<ContactPicture>(self).contacts;
             picture.clear();
 
@@ -25,8 +25,13 @@ namespace naval {
                     continue;
                 }
                 float const d = (registry.get<Physics>(other).body->GetPosition() - selfPos).Length();
-                if (d <= visualM) {
+                // Take the best rung the range earns: seen outright inside visual
+                // range, else a ranged blip if the active radar is up and reaches
+                // it. Beyond both, the contact is not held at all.
+                if (d <= sensors.visualRangeM) {
                     picture.emplace(other, Contact{ DetectLevel::Visual });
+                } else if (sensors.activeOn && d <= sensors.activeRangeM) {
+                    picture.emplace(other, Contact{ DetectLevel::Ranged });
                 }
             }
         }

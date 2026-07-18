@@ -30,6 +30,8 @@ namespace naval {
         const moth_ui::Color kTargetRingArmedColor{ 0.95f, 0.25f, 0.25f, 0.90f }; // designated contact, under the guns
         const moth_ui::Color kCiwsTracerColor{ 1.00f, 0.85f, 0.35f, 0.9f };       // point-defence tracer rounds
         const moth_ui::Color kCiwsMuzzleColor{ 1.00f, 0.95f, 0.70f, 1.0f };       // point-defence muzzle flash and target sparkle
+        const moth_ui::Color kContactColor{ 0.45f, 0.85f, 0.75f, 0.90f };         // radar contact blip (any contact the sweep paints)
+        const moth_ui::Color kRadarRingColor{ 0.45f, 0.85f, 0.75f, 0.14f };       // active radar reach, drawn while radiating
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -121,6 +123,51 @@ namespace naval {
                                                { targetPx.x + 8.0f, targetPx.y + 8.0f } });
     }
 
+    void DrawContacts(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer) {
+        auto const* sensors = registry.try_get<Sensors>(viewer);
+        auto const* picture = registry.try_get<ContactPicture>(viewer);
+        // Nothing to paint while the radar is silent: a blip is a radar return, so
+        // with the set down even a contact held by eye carries no mark.
+        if (sensors == nullptr || picture == nullptr || !sensors->activeOn) {
+            return;
+        }
+
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+
+        // The active radar's reach: a faint ring about own ship, so the range the
+        // sweep is buying is legible on the water.
+        graphics.SetColor(kRadarRingColor);
+        moth_ui::FloatVec2 const selfPx = camera.WorldToScreen(registry.get<Physics>(viewer).body->GetPosition());
+        DrawCircle(graphics, selfPx, camera.MToPx(sensors->activeRangeM));
+
+        // A blip for every contact the radar is painting, whether or not its hull
+        // is also drawn: a contact that has closed into visual range keeps its mark
+        // rather than losing it to the hull, so the plot stays complete and a speck
+        // at survey zoom stays findable. The blip is a fixed screen-size glyph, not
+        // scaled to the hull — a radar return is a position, not a size — and an
+        // open diamond keeps it distinct from the target ring (a circle) and the
+        // waypoint marker (a boxed dot).
+        graphics.SetColor(kContactColor);
+        constexpr float kBlipPx = 8.0f;
+        for (auto const& entry : picture->contacts) {
+            entt::entity const entity = entry.first;
+            if (!registry.valid(entity)) {
+                continue;
+            }
+            auto const* physics = registry.try_get<Physics>(entity);
+            if (physics == nullptr) {
+                continue;
+            }
+            moth_ui::FloatVec2 const p = camera.WorldToScreen(physics->body->GetPosition());
+            graphics.DrawLineF({ p.x, p.y - kBlipPx }, { p.x + kBlipPx, p.y });
+            graphics.DrawLineF({ p.x + kBlipPx, p.y }, { p.x, p.y + kBlipPx });
+            graphics.DrawLineF({ p.x, p.y + kBlipPx }, { p.x - kBlipPx, p.y });
+            graphics.DrawLineF({ p.x - kBlipPx, p.y }, { p.x, p.y - kBlipPx });
+        }
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
+    }
+
     void DrawWakes(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera,
                    entt::entity viewer, ContactPicture const& picture) {
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
@@ -130,9 +177,10 @@ namespace naval {
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
         for (auto entity : registry.view<Renderable, Wake>()) {
             // Same fog rule as the hull render in the layer: the viewer's own
-            // trail, a detected contact's, or a wreck's; an undetected enemy's
-            // wake is not on the player's water.
-            if (entity != viewer && picture.contacts.count(entity) == 0 &&
+            // trail, a *seen* contact's, or a wreck's. A merely ranged contact
+            // leaves no wake any more than it draws a hull, and an undetected one
+            // nothing at all.
+            if (entity != viewer && !SeesHull(picture, entity) &&
                 !registry.all_of<Sinking>(entity)) {
                 continue;
             }

@@ -250,6 +250,9 @@ namespace naval::defs {
             h.health = j.value("health", 0.0f);
             h.visualRangeM = j.at("visualRangeM").get<float>();
             Require(h.visualRangeM > 0.0f, "hull '" + id + "' visualRangeM must be positive");
+            h.activeRangeM = j.at("activeRangeM").get<float>();
+            Require(h.activeRangeM >= h.visualRangeM,
+                    "hull '" + id + "' activeRangeM must reach at least as far as visualRangeM");
             h.color = ParseColor(j.at("color"));
             h.explosionSound = j.value("explosionSound", std::string{});
             h.explosionShakeM = j.value("explosionShakeM", 0.0f);

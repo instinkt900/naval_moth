@@ -249,12 +249,12 @@ namespace naval {
         }
 
         // Firing arcs beneath the hulls, for every armed ship still alive. An
-        // enemy's arcs are fog-gated like its hull (nothing for an undetected
-        // contact) and can be hidden even when detected via the debug toggle; the
-        // player's own always draw.
+        // enemy's arcs are gated like its hull (nothing unless the player actually
+        // sees it — a ranged blip carries no known armament) and can be hidden even
+        // when seen via the debug toggle; the player's own always draw.
         for (auto ship : m_registry.view<Physics, Armament>()) {
             if (m_registry.get<Combatant>(ship).faction == Faction::Enemy &&
-                (!m_showEnemyArcs || picture.contacts.count(ship) == 0)) {
+                (!m_showEnemyArcs || !SeesHull(picture, ship))) {
                 continue;
             }
             DrawArcs(m_graphics, m_registry, m_camera, ship);
@@ -267,19 +267,26 @@ namespace naval {
         DrawTargetMarker(m_graphics, m_registry, m_camera, m_ship);
 
         // Hulls on top; the player's is drawn last so it stays the topmost. An
-        // enemy hull is drawn only while the player's picture holds it; a wreck is
-        // exempt (it has shed the Combatant the picture is keyed on, and is the
-        // visible aftermath of a fight the player was in).
+        // enemy hull is drawn only while the player *sees* it (a merely ranged
+        // contact gets a blip from DrawContacts, not a hull); a wreck is exempt
+        // (it has shed the Combatant the picture is keyed on, and is the visible
+        // aftermath of a fight the player was in).
         for (auto ship : m_registry.view<Physics, Renderable>()) {
             if (ship == m_ship) {
                 continue;
             }
-            if (picture.contacts.count(ship) == 0 && !m_registry.all_of<Sinking>(ship)) {
+            if (!SeesHull(picture, ship) && !m_registry.all_of<Sinking>(ship)) {
                 continue;
             }
             DrawShip(m_graphics, m_registry, m_camera, ship);
         }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
+
+        // Radar blips over every contact the sweep paints (a close one keeps its
+        // mark atop its hull), plus the active radar's reach ring — drawn only
+        // while radiating.
+        DrawContacts(m_graphics, m_registry, m_camera, m_ship);
+
         DrawProjectiles(m_graphics, m_registry, m_camera);
 
         // Point-defence tracer streams, over the missiles they are cutting down.
@@ -420,6 +427,16 @@ namespace naval {
         if (ImGui::Button("Midships")) {
             helm.rudderCmd = 0.0f;
         }
+
+        // Sensors. Active radar lights up contacts out to the set reach as
+        // unidentified blips; it starts off (silent — the EMCON posture), and
+        // turning it on will, once the enemy can listen, announce own position.
+        ImGui::Separator();
+        auto& sensors = m_registry.get<Sensors>(m_ship);
+        ImGui::Checkbox("Active radar", &sensors.activeOn);
+        ImGui::TextUnformatted(fmt::format("Visual {:.0f} km   Radar {:.0f} km",
+                                           sensors.visualRangeM / 1000.0f, sensors.activeRangeM / 1000.0f)
+                                   .c_str());
 
         ImGui::End();
     }

@@ -208,6 +208,7 @@ namespace naval::defs {
         float angularDamping = 0.0f;
         float health = 0.0f;       // hit points; 0 means the hull is not destructible
         float visualRangeM = 0.0f; // m; range inside which this hull sees contacts outright (no radar)
+        float activeRangeM = 0.0f; // m; active radar reach — a ranged, unidentified contact while radiating
         moth_ui::Color color;
         std::string explosionSound; // id into the sound table, played as it dies; empty = silent
         float explosionShakeM = 0.0f; // metres of camera shake at full effect as it dies; 0 = none

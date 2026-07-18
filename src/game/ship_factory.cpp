@@ -47,7 +47,7 @@ namespace naval {
                                                          hull.foreShoulder, hull.foreShoulderBeam,
                                                          hull.aftShoulder, hull.aftShoulderBeam });
         registry.emplace<Identity>(entity, Identity{ hull.name });
-        registry.emplace<Sensors>(entity, Sensors{ hull.visualRangeM });
+        registry.emplace<Sensors>(entity, Sensors{ hull.visualRangeM, hull.activeRangeM });
         // Only the player keeps a contact picture; the enemy is left omniscient
         // (its aggro system scans hulls directly) until the fight is two-sided, so
         // giving it a picture now would be dead weight the sensor system fills and

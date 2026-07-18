@@ -354,15 +354,24 @@ namespace naval {
 
     // A ship's detection reach — how far its own senses carry. Only the ranges
     // the current sensor step implements are populated; the rest of the sensor
-    // suite (active/passive radar) fills these out as those steps land. Authored
-    // per hull in data, so a bigger ship with a taller mast can see farther.
+    // suite (passive radar) fills these out as those steps land. Authored per
+    // hull in data, so a bigger ship with a taller mast and a stronger set can
+    // see and reach farther.
     //
     // visualRangeM is the range inside which a contact is simply *seen* — the
     // real hull on the water, full truth, no radar needed (the Visual rung of the
-    // detection ladder in PLAN's *Sensors & the tactical view*). Beyond it a ship
-    // knows only what its radar tells it, which is nothing yet.
+    // detection ladder in PLAN's *Sensors & the tactical view*).
+    //
+    // activeRangeM is how far an active radar sweep reaches: while activeOn, a
+    // contact beyond visual range but within it is held at the Ranged rung — a
+    // fixed position, but no identity. Radiating is a choice, not a given, which
+    // is why activeOn is a runtime toggle and not a property of the hull: going
+    // active buys the ranged picture at the cost (once the enemy can listen) of
+    // announcing own position. It starts off — silent is the default posture.
     struct Sensors {
         float visualRangeM = 0.0f; // m; a contact within this is seen outright
+        float activeRangeM = 0.0f; // m; active radar reach — a contact within this (beyond visual) is a ranged blip while radiating
+        bool activeOn = false;     // whether the active radar is radiating; off = emit nothing, hold only visual contacts
     };
 
     // The rungs of the detection ladder (PLAN's *Sensors & the tactical view*),
@@ -396,6 +405,16 @@ namespace naval {
     struct ContactPicture {
         std::unordered_map<entt::entity, Contact> contacts;
     };
+
+    // Whether `picture` holds `contact` at the Visual rung — the observer actually
+    // sees the hull, as opposed to holding only a ranged blip (or nothing). This
+    // is the gate for drawing a contact as its literal hull, with its wake and
+    // firing arcs; a merely ranged contact draws as a bare radar mark instead (see
+    // DrawContacts), so those hull visuals must not leak from it.
+    inline bool SeesHull(ContactPicture const& picture, entt::entity contact) {
+        auto const it = picture.contacts.find(contact);
+        return it != picture.contacts.end() && it->second.level == DetectLevel::Visual;
+    }
 
     // The sounds a hull itself makes, as opposed to the ones its guns and their
     // shots make (those live on Weapon and Projectile). Handles are resolved

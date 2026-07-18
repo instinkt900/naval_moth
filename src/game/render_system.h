@@ -39,6 +39,12 @@ namespace naval {
     // nothing when no contact is designated.
     void DrawTargetMarker(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
+    // The viewer's own radar picture over the sea, drawn only while its active
+    // radar is radiating: a faint ring at the reach it is buying, and a blip at
+    // every contact the sweep paints — including one that has closed into visual
+    // range, which keeps its mark on top of its hull so the plot stays complete.
+    void DrawContacts(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer);
+
     // Every visible hull's fading wake, drawn on the water beneath the hulls.
     // Fog-gated like the hulls themselves: a wake is drawn only for `viewer`, for
     // a contact in its `picture`, or for a wreck — an undetected enemy leaves no
