@@ -25,8 +25,17 @@ namespace naval {
         shape.Set(outline.data(), kHullVertexCount);
         b2FixtureDef fixtureDef;
         fixtureDef.shape = &shape;
+        // Box2D is 2D, so a fixture's mass is area * density. Create it at unit
+        // density (mass then equals the hull's area in m^2), then scale density
+        // so the body weighs the hull's authored real displacement. This is what
+        // makes accel and coast ordered by real tonnage — a battleship is heavy
+        // in the sim because it is heavy in the data, not because a number was
+        // hand-tuned.
         fixtureDef.density = 1.0f;
-        body->CreateFixture(&fixtureDef);
+        b2Fixture* fixture = body->CreateFixture(&fixtureDef);
+        float const areaM2 = body->GetMass();
+        fixture->SetDensity(hull.massKg / areaM2);
+        body->ResetMassData();
 
         registry.emplace<Physics>(entity, Physics{ body });
         registry.emplace<Propulsion>(entity, Propulsion{ hull.propulsion.maxThrust,

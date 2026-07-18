@@ -10,6 +10,28 @@
 namespace naval::defs {
     namespace {
         constexpr float kKnotsToMetersPerSecond = 0.514444f;
+        constexpr float kWattsPerKilowatt = 1000.0f;
+
+        // A ship has no nameplate "thrust" the way a rocket does — propeller
+        // thrust varies with speed and isn't a published figure. What is
+        // publishable is shaft power and top speed, so thrust is derived: the
+        // force that balances drag at flank is the useful power delivered to the
+        // water divided by top speed. kPropulsiveEfficiency is the fraction of
+        // shaft power that becomes thrust (hull and propeller losses); a mid-0.5
+        // figure is typical for a warship. The propulsion system then reuses this
+        // flank force as the drag coefficient's numerator, so the hull still tops
+        // out at exactly maxSpeed.
+        constexpr float kPropulsiveEfficiency = 0.55f;
+
+        // Real hulls take minutes to work up to flank — accurate but unplayable.
+        // This one gain multiplies every hull's derived thrust (and, through the
+        // drag law, its drag), compressing all spin-up and coast times by the
+        // same factor while leaving top speeds and the relative feel between
+        // hulls untouched. It is the single knob for accel/decel briskness across
+        // the whole fleet; the physically-correct ordering (a battleship is
+        // slower to gather and shed way than a patrol boat) comes for free from
+        // the authored mass and power, and this only scales the timescale.
+        constexpr float kAgilityGain = 7.0f;
 
         nlohmann::json ReadJson(std::filesystem::path const& path) {
             std::ifstream in(path);
@@ -194,13 +216,19 @@ namespace naval::defs {
             Hull h;
             h.name = j.value("name", id);
             auto const& jp = j.at("propulsion");
-            h.propulsion.maxThrust = jp.at("maxThrust").get<float>();
             h.propulsion.maxSpeed = jp.at("maxSpeedKnots").get<float>() * kKnotsToMetersPerSecond;
             h.propulsion.turnRate = jp.at("turnRate").get<float>();
             h.propulsion.powerDistance = jp.at("powerDistance").get<float>();
             h.propulsion.rudderRate = jp.at("rudderRate").get<float>();
-            Require(h.propulsion.maxThrust <= 0.0f || h.propulsion.maxSpeed > 0.0f,
-                    "hull '" + id + "' has thrust but no maxSpeed");
+            h.massKg = j.at("massKg").get<float>();
+            float const shaftPowerW = jp.at("shaftPowerKW").get<float>() * kWattsPerKilowatt;
+            Require(h.massKg > 0.0f, "hull '" + id + "' massKg must be positive");
+            Require(h.propulsion.maxSpeed > 0.0f, "hull '" + id + "' maxSpeedKnots must be positive");
+            Require(shaftPowerW > 0.0f, "hull '" + id + "' shaftPowerKW must be positive");
+            // Flank thrust = efficiency * power / top speed, scaled by the global
+            // agility gain that pulls accel/coast times into a playable range.
+            h.propulsion.maxThrust =
+                kAgilityGain * kPropulsiveEfficiency * shaftPowerW / h.propulsion.maxSpeed;
             h.halfLengthM = j.at("halfLengthM").get<float>();
             h.halfBeamM = j.at("halfBeamM").get<float>();
             // Optional hull profile. Each shoulder is [lengthFactor, beamFactor]

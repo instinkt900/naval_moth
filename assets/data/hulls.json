@@ -1,25 +1,9 @@
 {
-    "scout": {
-        "name": "Scout",
-        "propulsion": {
-            "maxThrust": 400.0,
-            "maxSpeedKnots": 36.0,
-            "turnRate": 0.5,
-            "powerDistance": 100.0,
-            "rudderRate": 1.2
-        },
-        "halfLengthM": 12.0,
-        "halfBeamM": 2.6,
-        "angularDamping": 3.0,
-        "color": [0.85, 0.82, 0.70, 1.0],
-        "mounts": [
-            { "type": "gun", "gun": "auto_gun", "bearingDegrees": 0.0, "forwardM": 5.0, "lateralM": 0.0 }
-        ]
-    },
     "frigate": {
         "name": "Anzac-class Frigate",
+        "massKg": 3600000.0,
         "propulsion": {
-            "maxThrust": 2500.0,
+            "shaftPowerKW": 30000.0,
             "maxSpeedKnots": 27.0,
             "turnRate": 0.08,
             "powerDistance": 100.0,
@@ -36,6 +20,8 @@
         "explosionShakeM": 3.0,
         "mounts": [
             { "type": "gun", "gun": "mk45_mod2", "bearingDegrees": 0.0, "forwardM": 38.0, "lateralM": 0.0 },
+            { "type": "gun", "gun": "typhoon_25", "bearingDegrees": 90.0, "forwardM": 14.0, "lateralM": 6.0 },
+            { "type": "gun", "gun": "typhoon_25", "bearingDegrees": -90.0, "forwardM": 14.0, "lateralM": -6.0 },
             { "type": "gun", "gun": "m2_browning", "bearingDegrees": 90.0, "forwardM": 6.0, "lateralM": 6.5 },
             { "type": "gun", "gun": "m2_browning", "bearingDegrees": -90.0, "forwardM": 6.0, "lateralM": -6.5 },
             { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -32.0, "lateralM": 0.0 },
@@ -46,8 +32,9 @@
     },
     "destroyer": {
         "name": "Hobart-class Destroyer",
+        "massKg": 7000000.0,
         "propulsion": {
-            "maxThrust": 7000.0,
+            "shaftPowerKW": 40000.0,
             "maxSpeedKnots": 28.0,
             "turnRate": 0.06,
             "powerDistance": 100.0,
@@ -59,18 +46,19 @@
         "color": [0.85, 0.82, 0.70, 1.0],
         "mounts": [
             { "type": "gun", "gun": "mk45", "bearingDegrees": 0.0, "forwardM": 48.0, "lateralM": 0.0 },
-            { "type": "launcher", "launcher": "mk41_32", "munition": "rim162_essm", "bearingDegrees": 0.0, "forwardM": 32.0, "lateralM": 0.0 },
             { "type": "gun", "gun": "typhoon_25", "bearingDegrees": 90.0, "forwardM": 0.0, "lateralM": 7.0 },
             { "type": "gun", "gun": "typhoon_25", "bearingDegrees": -90.0, "forwardM": 0.0, "lateralM": -7.0 },
+            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -40.0, "lateralM": 0.0 },
+            { "type": "launcher", "launcher": "mk41_32", "munition": "rim66_sm2", "bearingDegrees": 0.0, "forwardM": 32.0, "lateralM": 0.0 },
             { "type": "launcher", "launcher": "harpoon_mk141", "munition": "rgm84_harpoon", "bearingDegrees": 0.0, "forwardM": -12.0, "lateralM": 0.0 },
-            { "type": "launcher", "launcher": "mk32", "munition": "mu90_torpedo", "bearingDegrees": 0.0, "forwardM": -25.0, "lateralM": 0.0 },
-            { "type": "gun", "gun": "phalanx_1b", "bearingDegrees": 180.0, "forwardM": -40.0, "lateralM": 0.0 }
+            { "type": "launcher", "launcher": "mk32", "munition": "mu90_torpedo", "bearingDegrees": 0.0, "forwardM": -25.0, "lateralM": 0.0 }
         ]
     },
     "iowa": {
         "name": "Iowa-class Battleship",
+        "massKg": 57500000.0,
         "propulsion": {
-            "maxThrust": 30000.0,
+            "shaftPowerKW": 158000.0,
             "maxSpeedKnots": 33.0,
             "turnRate": 0.03,
             "powerDistance": 100.0,
@@ -102,8 +90,9 @@
     },
     "armidale": {
         "name": "Armidale-class Patrol Boat",
+        "massKg": 300000.0,
         "propulsion": {
-            "maxThrust": 800.0,
+            "shaftPowerKW": 6225.0,
             "maxSpeedKnots": 25.0,
             "turnRate": 0.15,
             "powerDistance": 100.0,
@@ -126,8 +115,9 @@
     },
     "picket": {
         "name": "Missile Picket",
+        "massKg": 200000.0,
         "propulsion": {
-            "maxThrust": 600.0,
+            "shaftPowerKW": 3000.0,
             "maxSpeedKnots": 18.0,
             "turnRate": 0.12,
             "powerDistance": 100.0,
@@ -142,25 +132,6 @@
         "explosionShakeM": 2.0,
         "mounts": [
             { "type": "launcher", "launcher": "test_launcher", "munition": "rgm84_harpoon", "bearingDegrees": 0.0, "forwardM": 8.0, "lateralM": 0.0 }
-        ]
-    },
-    "hulk": {
-        "name": "Hulk",
-        "propulsion": {
-            "maxThrust": 0.0,
-            "maxSpeedKnots": 0.0,
-            "turnRate": 0.0,
-            "powerDistance": 1.0,
-            "rudderRate": 0.25
-        },
-        "halfLengthM": 55.0,
-        "halfBeamM": 12.0,
-        "angularDamping": 5.0,
-        "health": 100.0,
-        "color": [0.80, 0.40, 0.35, 1.0],
-        "explosionSound": "explosion",
-        "explosionShakeM": 3.0,
-        "mounts": [
         ]
     }
 }

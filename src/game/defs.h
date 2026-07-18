@@ -187,8 +187,8 @@ namespace naval::defs {
     };
 
     struct Propulsion {
-        float maxThrust = 0.0f;
-        float maxSpeed = 0.0f;
+        float maxThrust = 0.0f;     // derived at load from shaft power and top speed (see defs.cpp); newtons
+        float maxSpeed = 0.0f;      // top speed (m/s), from maxSpeedKnots
         float turnRate = 0.0f;
         float powerDistance = 0.0f;
         float rudderRate = 0.0f;
@@ -198,6 +198,7 @@ namespace naval::defs {
     struct Hull {
         std::string name; // display name shown in game; defaults to the id if unspecified
         Propulsion propulsion;
+        float massKg = 0.0f; // real displacement (kg); sets the Box2D body mass at spawn
         float halfLengthM = 0.0f;
         float halfBeamM = 0.0f;
         float foreShoulder = kHullShoulder;         // fore taper shoulder position, 0-1 factor of the half-length

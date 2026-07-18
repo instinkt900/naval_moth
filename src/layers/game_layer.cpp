@@ -55,8 +55,8 @@ namespace naval {
         // it) is open water; a slot that never lands in water is skipped rather
         // than looping forever.
         constexpr int kEnemyCount = 6;
-        constexpr float kMinDistM = 800.0f;  // no closer than this to the player
-        constexpr float kMaxDistM = 3500.0f; // no farther than this out
+        constexpr float kMinDistM = 1000.0f;  // no closer than this to the player
+        constexpr float kMaxDistM = 28000.0f; // no farther than this out
         constexpr float kClearanceM = 60.0f; // keep the hull clear of any shore
         constexpr int kMaxAttempts = 64;     // give up on a slot after this many tries
 
@@ -240,8 +240,12 @@ namespace naval {
             DrawAggroRing(m_graphics, m_registry, m_camera, ship);
         }
 
-        // Firing arcs beneath the hulls, for every armed ship still alive.
+        // Firing arcs beneath the hulls, for every armed ship still alive. Enemy
+        // arcs can be hidden via the debug toggle; the player's own always draw.
         for (auto ship : m_registry.view<Physics, Armament>()) {
+            if (!m_showEnemyArcs && m_registry.get<Combatant>(ship).faction == Faction::Enemy) {
+                continue;
+            }
             DrawArcs(m_graphics, m_registry, m_camera, ship);
         }
         DrawTarget(m_graphics, m_registry, m_camera, m_ship);
@@ -290,6 +294,7 @@ namespace naval {
         ImGui::SliderFloat("Steerage error (rad)", &tuning.steerageErrorRad, 0.05f, 1.5f, "%.2f");
         ImGui::SliderFloat("Arc switch margin (rad)", &tuning.switchMarginRad, 0.0f, 1.5f, "%.2f");
         ImGui::Checkbox("Show aggro rings", &tuning.showRings);
+        ImGui::Checkbox("Show enemy arcs", &m_showEnemyArcs);
         ImGui::End();
     }
 

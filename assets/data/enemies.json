@@ -1,7 +1,4 @@
 {
-    "target_dummy": {
-        "hull": "hulk"
-    },
     "raider": {
         "hull": "armidale"
     },

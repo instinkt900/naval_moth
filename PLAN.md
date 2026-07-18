@@ -32,6 +32,80 @@ Click distance scales effort. A destination far away commands fast, hard power;
 a nearby destination commands a small, careful adjustment. This gives the player
 one gesture that covers both "charge across the map" and "nudge into position."
 
+## Movement & tempo
+
+Movement is the spine the rest of the game hangs off, not a preamble to the
+"real" part where the guns speak. The trap a long-range naval game falls into is
+treating *inside maximum range* as the state that decides everything: then the sea
+collapses into two dull cases — everyone is in the circle and no one needs to
+manoeuvre, or the fight is two dots shooting from off the edge of the view. Almost
+nothing here makes "inside max range" a good place to be, and that is deliberate.
+Being in range is not being in a firing position.
+
+Four mechanics defined elsewhere in this document turn an engagement into a
+continuous positioning contest, and it is worth stating that they are, together,
+the manoeuvre game:
+
+- **The range band** (see *Weapons*) means a contact inside maximum range but out
+  in the falloff is being *harassed*, not killed. Closing from falloff into the
+  effective band — or opening the range to push an enemy out of theirs — is a
+  manoeuvre decision made entirely while both ships are "in range."
+- **Firing arcs** mean a contact in range but off the beam is shot by nothing.
+  Unmasking a broadside while denying the enemy theirs is the classic crossing of
+  the T, and it is pure geometry: where the hulls point, not how far apart they sit.
+- **Aspect and armour** (see *Defending against gunfire*) make heading a defence —
+  presenting a narrow bow-on aspect shrinks the target and turns the toughest
+  plating to the fire.
+- **Evasion** makes a fast, unpredictably turning hull harder to hit, so weaving
+  under fire is a defence in its own right and a straight-runner is a soft target.
+
+An engagement is therefore a contest over the firing solution and the geometry, not
+over who is inside a circle — get the track, hold the angle, and beat the enemy's
+manoeuvre, or deny any one of those. A captain never stops moving even when both
+ships have been in range for minutes.
+
+**Momentum is what makes this a skill rather than a twitch.** Because a ship turns
+slowly, carries its way, and comes about faster the more speed it has on (see
+*Ships & components*), every reposition is a committed prediction: you cannot
+instantly swing bow-on, unmask a battery, or reverse out of a closing pass, and
+even choosing to slow down to turn tighter spends the speed that was keeping you
+evasive. You are not reacting to where the fight is; you are betting on where it
+will be.
+
+### Sensing is a different reach from shooting
+
+The single principle that keeps *transit* from being dead water is that **what a
+ship can detect and what it can shoot are different ranges** — the sensor ring and
+the weapon ring are deliberately not the same size. Collapse them together and the
+game reduces to "the moment you see a contact you can fire on it," which is the
+circle problem again. Hold them apart and the gap between them becomes the play:
+
+- **When sensors reach past the guns**, the approach is the manoeuvre game. You
+  hold a contact at distance, read its heading, and choose the engagement geometry
+  before a shot is fired; crossing the water is positioning into the fight you want,
+  not waiting to arrive at a known dot.
+- **When the guns reach past the sensors**, you cannot engage what you alone cannot
+  see, so closing to detect means closing into fire — which is what gives EMCON its
+  knife-edge and what makes a fleet's shared picture matter: a picket out front holds
+  the track and a magazine ship behind the horizon shoots it (see *Fleet command*).
+
+This is also how map size is chosen. The map is measured in *engagement ranges
+across*, not in absolute metres: about one and everything is always in range with
+no room to manoeuvre; ten and transit is the whole game; **roughly three to five**
+leaves real room to close, reposition, and break contact without the sea reading as
+empty. The true-range experiment (see *Data & content*) is really a bet about how
+wide that ratio can go before a fight happens off-screen — and the tactical view is
+what is meant to buy the extra width by keeping a distant engagement legible as a
+plot.
+
+Traversing the map at all, as opposed to manoeuvring within a fight, is a question
+open water cannot answer on its own — a pure sink-the-other-ship duel never needs
+you to be anywhere in particular. The **land targets** (see that section) are what
+give the sea destinations: batteries to silence, ports and installations to
+destroy, a coast that contests your route. Then movement is sea control, and a
+fight is what happens when the enemy's positioning stands between you and where you
+are going.
+
 ## Ships & components
 
 Ships are composed rather than hard-coded. A hull carries structural identity and
@@ -264,12 +338,19 @@ Six definition sets, cross-referenced by id:
 Content is authored with real warships and their armament in mind — hull
 dimensions, speeds, and weapon fits should read as plausible for the vessel
 they're modelled on, so the fleet feels like a fleet rather than a set of
-abstract shapes. Gun ranges are the one deliberate exception: real naval gunnery
-reaches far enough that a true-scale engagement is two dots shooting at each
-other from off-screen, which is no fun to play. **Divide a real range by 10** when
-authoring a weapon, keeping the relative reach of one gun against another intact
-while pulling the whole fight into a range where maneuver matters and both ships
-are visible at once.
+abstract shapes.
+
+Weapon range is where that fidelity fights playability. The original convention
+**divided a real range by 10**, keeping the relative reach of one gun against
+another intact while pulling the fight into a range where both ships stay on
+screen — because true naval gunnery reaches far enough that a full-scale
+engagement is two dots firing from off the edge of the view, which is no fun to
+watch happen. An **experiment is now underway to author true, undivided ranges
+instead**, on the bet that the tactical view (see *Sensors & the tactical view*)
+makes a long-reach engagement legible as a plot of contacts rather than a fight
+happening off-screen. The recent naval guns and missile munitions are authored at
+or near true scale on that bet; the divided values elsewhere are the older
+convention, and the two coexist while the experiment runs.
 
 References resolve by id — an enemy names a hull and weapons, a weapon names a
 projectile — and are validated when the definitions load, so a bad reference fails
@@ -284,6 +365,129 @@ machinery as the milestones that consume them land.
 - **Phase 1:** open sea, camera locked. No land, no scrolling.
 - **Later:** a larger map with land masses to navigate around, and a camera that
   follows the active ship on a spring (smooth lag rather than a rigid lock).
+
+## Sensors & the tactical view
+
+A contact is something you *detect*, not something the game simply shows you. The
+long-term direction is a detection layer — **radar** above the water, **sonar**
+beneath it — that decides what a ship knows about, rather than every hull on the
+sea being drawn outright. A ship holds the contacts its own sensors (and, later,
+its fleet's) can reach; the rest of the sea is empty until something sweeps it.
+
+This is what lets the game keep **true weapon ranges** rather than the
+divided-by-10 convention (see *Data & content*). Real naval reach only becomes a
+problem when a fight happens off the edge of a ship-sprite view; give the player a
+way to *read* that fight and the reach becomes the point rather than the problem.
+So the picture changes with the zoom:
+
+- **Zoomed in**, the view is what it is today — hull shapes on the water, shells
+  and wakes, a fight you watch happen.
+- **Zoomed out**, that literal picture fades into a **tactical plot**: contacts
+  become markers with names, bearings and tracks, the way a radar readout or a
+  plotting table reads. The sea stops being a place you watch and becomes a map
+  you command from.
+
+The two are the same world at different scales, not two modes to switch between —
+pulling back trades the visual for the strategic continuously, so a captain
+surveying the whole engagement sees a plot and a captain down in it sees the guns.
+
+## Defending against gunfire
+
+Missiles and torpedoes have an obvious answer — point defence shoots them down
+(see *Projectiles*) — because each is a discrete object in flight worth
+intercepting. Gunfire has none: a shell is too small, too fast, and comes in
+salvos too cheap to swat. So there is no hard-kill answer to guns, and defence
+moves to the earlier links of the engagement — deny the shot, dodge the shot, or
+survive it — none of which is "shoot the shot down." Four levers, each a design
+primitive in its own right:
+
+- **Emissions control as a defensive posture.** Naval gunnery is radar-directed:
+  no track, no firing solution. Going dark (**EMCON** — see *Sensors & the
+  tactical view*) is therefore not only how a ship avoids being *found*, it is how
+  it avoids being *fired on*. This is what gives the sensor layer teeth as
+  defence, and it cuts both ways — the moment a ship goes active to range its own
+  targets, it lights itself up for everyone else's guns.
+- **Evasion, not just range.** Shells have a long time of flight at true ranges,
+  so a target that is fast and manoeuvring unpredictably walks out of the fall of
+  shot before it lands. The range band already fades accuracy with distance; this
+  adds a second input — a hull's speed and rate of turn should lower an incoming
+  shot's hit chance, so evasive handling is a real defence and a straight-runner
+  is a soft target. Guided munitions ignore this: they track, so only ballistic
+  fire is dodged this way.
+- **Armour as a stat apart from health.** The gun-specific defence with no missile
+  analogue is protection. A hull carries toughness against shellfire distinct from
+  its hit-point pool — a heavy cruiser shrugs off what holes a patrol boat — so
+  taking a hit is not the same as taking damage, and presenting a narrow bow-on
+  aspect (thanks to the momentum model) is a positioning skill that shrinks the
+  target.
+- **Smoke as a consumable.** A screen that breaks *optical* tracking but not radar
+  — a deliberately partial counter that matters against a gun-laying ship shooting
+  by eye and does nothing against one still radiating. A limited, tactical thing
+  laid on the water, not a permanent field.
+
+Together these make a gunnery duel a contest of the firing solution rather than
+the projectile: get the track, hold it, and beat the target's manoeuvre — or deny
+any one of those and the guns fall silent, without a single shell intercepted.
+
+## Fleet command
+
+The "command, don't pilot" pillar scales up: the eventual unit of play is a
+**fleet**, not a single ship. The player issues intent across several hulls — this
+one holds contact, that one closes, the escort guards the flank — and each works
+out its own manoeuvre and gunnery as it does now.
+
+A fleet fights as one picture. Friendly ships **share their sensor contacts**:
+what one hull's radar or sonar holds, the whole formation knows, so a ship that
+cannot see a target itself can still act on it. That unlocks the cooperation that
+makes a fleet more than ships in proximity:
+
+- **Remote engagement.** A missile battery can fire on a contact held by
+  *another* ship's radar — a picket out front finds the target, a magazine ship
+  behind the horizon shoots it. The launcher needs the track, not its own line of
+  sight.
+- **Cooperative point defence.** A defence ship's close-in weapons answer threats
+  aimed at *friendly* hulls, not only itself — an escort's CIWS is there to keep
+  the ships it screens alive, so a dedicated air-defence vessel earns its place in
+  the formation.
+
+This is where the sensor layer, the point-defence exchange, and the
+composable-ship model meet: a ship's worth to the fleet is what its sensors and
+weapons contribute to the shared fight, not just what it can do alone.
+
+## Land targets
+
+So far every target floats: it is a hull, it can be sunk, and sinking it clears
+the order. Not everything worth shooting will. The intent is **fixed targets on
+the land** — coastal gun and missile batteries, radar and sensor stations, ports
+and installations — as both threats that shoot back and objectives to destroy.
+The content already leans this way: the Iowa's Tomahawks are a land-attack weapon
+with nothing yet to attack.
+
+A shore target is a ship with the ship taken out of it, and the differences are
+the design:
+
+- **It does not move and does not sink.** No wake, no manoeuvre, no evasion — a
+  static, known position, killed by damage rather than by flooding, so the "a
+  target that sinks clears the order" rule needs a plain destroyed state instead.
+  Being immobile, it is the one target a gun's firing solution never has to lead.
+- **It is a kind of target, not a ship.** The weapons system already has to learn
+  which kinds of thing a mount may engage (hulls, projectiles — see *Projectiles*);
+  shore targets add another kind, and a mount says whether it can range the land at
+  all — a torpedo tube cannot, a Tomahawk battery exists for nothing else.
+- **Some shoot back.** A coastal battery is a gun or launcher on an unsinkable
+  mount: it has arcs and a range band like any ship weapon, and the "stay out of
+  its arc" and outrange-it answers from *Defending against gunfire* apply to it
+  unchanged. A shore SAM or radar site is a fixed node in the sensor layer — a
+  radar station is worth killing precisely because it holds contacts for the
+  defender.
+- **Terrain hides them.** Land targets sit in and behind terrain, so line of sight
+  and terrain-masking start to matter — a battery tucked behind a headland has to
+  be reached over or around, which is where land attack meets the guided-munition
+  route idea in *Stretch*.
+
+The natural home is once there is land to put them on (M5), and the shape of fight
+they make — standoff bombardment against a coast that fires back, or a strike that
+has to get past the shore's own defences — is a mission type as much as a feature.
 
 ## Enemies & multiplayer
 
@@ -336,6 +540,13 @@ as early as possible.
   behaviour.
 - **M7 — Other captains.** Networked player ships.
 - **M8 — Beneath the surface.** Submarines, torpedoes, and sonar.
+- **M9 — The tactical view.** Zoom-dependent rendering: the visual scene up close,
+  a plot of named contact markers as the camera pulls back. Detection becomes a
+  layer — a contact is something a sensor holds rather than a hull always drawn —
+  which is what makes true, undivided weapon ranges legible at survey zoom.
+- **M10 — A fleet to command.** More than one friendly ship under a single player,
+  sharing one sensor picture; missile batteries engage the fleet's contacts and
+  escorts throw point defence over friendly hulls.
 
 ## Musings
 

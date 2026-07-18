@@ -89,5 +89,9 @@ namespace naval {
         // before anything spawns, since spawning resolves sound handles here.
         Audio m_audio;
         entt::entity m_ship;
+        // Debug draw toggle: whether enemy ships' firing arcs are drawn. The
+        // player's own arcs are always shown; this only hides the AI batteries,
+        // which otherwise clutter the view once several ships are in range.
+        bool m_showEnemyArcs = true;
     };
 }

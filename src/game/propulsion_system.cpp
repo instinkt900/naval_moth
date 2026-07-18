@@ -14,6 +14,14 @@ namespace naval {
         constexpr float kTurnGain = 4.0f;       // how sharply heading error becomes yaw
         constexpr float kArrivalRadiusM = 20.0f; // stop powering once this close
 
+        // Quadratic drag only asymptotes toward zero, so a hull left with no
+        // drive coasts forever at an ever-slower crawl. When nothing is being
+        // commanded, snap a hull that has all but stopped to a dead rest so it
+        // parks instead of drifting endlessly. Gated on throttle so it never
+        // fights a driven hull — an accelerating ship always has throttle on.
+        constexpr float kStopSpeedM = 0.1f;      // m/s below which an undriven hull is snapped to rest
+        constexpr float kStopThrottle = 0.01f;   // throttle magnitude under this counts as no drive
+
         // Shared handling character for every hull. Yaw authority follows a hump
         // in forward speed: near nil dead in the water, peaking at kBestTurnFraction
         // of the hull's top speed, then washing out toward flank — but flat-out
@@ -85,6 +93,10 @@ namespace naval {
                 float const maxYaw = propulsion.turnRate * TurnCoef(speed, propulsion.maxSpeed);
                 body->SetAngularVelocity(helm.rudder * maxYaw);
                 body->ApplyForceToCenter((propulsion.maxThrust * helm.throttle) * forward, true);
+                if (std::abs(helm.throttle) < kStopThrottle
+                    && body->GetLinearVelocity().LengthSquared() < kStopSpeedM * kStopSpeedM) {
+                    body->SetLinearVelocity(b2Vec2{ 0.0f, 0.0f });
+                }
                 continue;
             }
 
