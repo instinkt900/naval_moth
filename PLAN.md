@@ -594,3 +594,43 @@ the enemy is tends to give away where *you* are. A match becomes a stalking
 game — go loud and find them fast but get found, or stay dark and hunt patiently.
 Fits naturally on top of the momentum-driven handling and the composable-ship
 model, and would lean hard on the later networked-play and sensor work.
+
+**Disabling a ship, not just sinking it.** Today a hull carries a single health
+pool and dies when it empties. A ship could instead be a set of destructible
+subsystems — **bridge**, **engine**, **hull/magazine**, individual weapon
+mounts — each with its own condition, so damage has a *shape* and not just a
+depth. Then the fight gains a choice the single pool cannot express: knock out
+the engine and a ship is dead in the water but afloat; silence the bridge and it
+stops fighting back; cripple a turret and it loses that battery without losing the
+ship. Deliberately *disabling* rather than destroying becomes a real objective —
+capturing a hull, leaving a witness, or taking a prize instead of a wreck. This
+leans on two things already in the design: the composable-ship model already
+knows where a hull's weapon mounts sit (see *Ships & components*), so a mount is a
+natural first destructible subsystem; and the range band's per-shot resolution
+(see *Weapons*) already resolves hits analytically, so *which* subsystem a hit
+falls on is a question the same machinery can answer. The open design question is
+targeting — whether the player aims at a subsystem (adding a layer under the
+current "designate a contact" model) or whether subsystem damage is a consequence
+of aspect and where a shot happens to land, keeping the captain's job at the level
+of the ship. The latter fits the "command, don't pilot" pillar better.
+
+**Rescuing survivors.** When a hull goes down it could leave survivors in the
+water — a brief, optional objective laid over the wreck. Coming about to pick them
+up trades tempo and exposure for whatever reward they carry (crew, intelligence,
+standing), so a sinking is not always just a cleared order but sometimes a reason
+to linger in a dangerous spot. It reuses the wake/sinking machinery that already
+marks where a hull settled, and it gives the sea another kind of destination (see
+*Movement & tempo*) that has nothing to do with shooting.
+
+**An economy and a growing navy.** A frame for the whole game beyond the single
+engagement: a captain who **gains wealth** from what they sink or the missions they
+complete, and **spends** it on ships, weapons, munitions, and repairs. Growth is
+then the meta-loop — start with one modest hull and build toward a fleet, choosing
+where the money goes: a second hull, a better gun, a magazine of missiles, or the
+yard time to fix the damage from the last fight. This sits directly on top of the
+data-driven content (see *Data & content*) — a shop is a menu of the same hull,
+weapon, and projectile definitions the game already loads — and on the composable
+ship (buying a weapon is attaching a component). It also gives the subsystem-damage
+and salvage ideas above their economic teeth: repair costs money, and a captured or
+salvaged prize is income. The natural endpoint is the fleet of *Fleet command*
+arrived at by purchase and attrition rather than handed over whole.
