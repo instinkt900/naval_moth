@@ -193,6 +193,22 @@ The enemy AI issues the same order through the same path — its aggro lock *is*
 fire order — so both sides shoot by identical rules rather than the AI having a
 private one.
 
+### Commanding fire in groups
+
+The single-order model above — one designated contact, and every gun that bears
+obeying — is the starting point, not the ceiling. The intent is to let the captain
+command fire in **groups**: several fire-control channels, each with its own
+designated contact and its own fire and salvo orders, and each gun assigned to a
+channel. A ship can then split its battery — the forward guns on one contact, a
+launcher on another — instead of fighting one target at a time, which is what a
+ship with reach in several directions at once actually wants. The present model is
+just the degenerate case of a single channel every gun belongs to, so "the order is
+the captain's and the batteries obey" still holds *within* a channel; what changes
+is that the captain may run more than one order at once. This is where the
+per-weapon controls above are headed — assigning a gun to a channel is the richer
+form of switching it in or out — and it is the ship-level groundwork for the
+multi-hull command of *Fleet command*.
+
 ### Range band
 
 Range is not a single number but a band with four zones, so distance shapes both
@@ -239,6 +255,18 @@ missiles, hold off what comes back with the CIWS. It also asks two things of the
 weapons system that anti-ship fire does not: a weapon needs to know which *kinds*
 of thing it may target (hulls, projectiles, or both), and targeting has to consider
 in-flight ordnance as candidates alongside ships.
+
+Once missiles fly they also meet the sensor layer, in two ways. First, an in-flight
+missile is itself a **contact**: inbound ordnance should appear on the tactical
+picture and the contact list, so a threat is seen coming rather than arriving
+unannounced — warning the player and, eventually, cueing point defence. Second, a
+missile can carry a **seeker** of its own. Rather than being handed a target at
+launch, a fire-and-forget missile is cued to a location (or, with *Programmed
+munition routes*, a path), flies dumb to it, then goes **live** — its radar seeker
+sweeps an arc ahead and locks the first valid target it finds, homing from there.
+That is the Harpoon model, and it makes the missile a small sensor platform: the
+same active/passive detection the ships run, shrunk onto a weapon. Both are where
+the detection ladder of *Sensors & the tactical view* and this section meet.
 
 ## Sound
 
