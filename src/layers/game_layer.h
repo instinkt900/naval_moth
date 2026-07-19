@@ -80,6 +80,12 @@ namespace naval {
         // dialling in enemy engagement behaviour without a rebuild.
         void DrawAggroDebug();
 
+        // ImGui window listing the player's passive TMA tracks and each one's
+        // solver state — cut count, observability, misfit and confidence, and the
+        // solved range/course/speed once it has one — so the solver is verifiable
+        // and its gates tunable without a test suite.
+        void DrawTmaDebug();
+
         // ImGui window of render-layer toggles. The frame is composited as four
         // layers — map (sea, terrain, seen hulls), radar (blips, reach ring,
         // passive bearings), tactical (arcs, waypoints, projectiles) and debug

@@ -445,6 +445,55 @@ namespace naval {
         return it != picture.contacts.end() && it->second.level == DetectLevel::Visual;
     }
 
+    // One passive contact's target-motion-analysis track: the rolling history of
+    // bearing cuts and the own-ship position each was taken from, plus the
+    // solution the solver has fit to them so far. This is how a range is wrung out
+    // of a passive contact *without going active* — a single bearing carries no
+    // range, but the way a run of them walks against own ship's own manoeuvre
+    // betrays one (PLAN's *Active versus passive*). So the track has to persist
+    // across ticks and accumulate, unlike the ContactPicture that is rebuilt each
+    // tick — history is the whole point.
+    //
+    // The solution is a constant-velocity estimate: where the contact is and how
+    // it is moving. It is observable only once own ship has manoeuvred — on a
+    // single straight leg the geometry is ambiguous (a near slow contact and a far
+    // fast one trace the same bearings), which the solver reports as a near-zero
+    // `observability` and this system pays deliberate manoeuvre by resolving. Fed
+    // only own positions and measured bearings, never the contact's true range.
+    struct TmaTrack {
+        struct Sample {
+            float t = 0.0f;                // s since the track opened
+            b2Vec2 ownPos{ 0.0f, 0.0f };   // own-ship world position at the cut (m)
+            float bearing = 0.0f;          // measured world bearing to the contact (rad)
+        };
+        std::vector<Sample> samples;       // rolling window, oldest first
+        float age = 0.0f;                  // s since the track opened
+        float sinceSample = 0.0f;          // s since the last cut was appended
+
+        // The solver's current fit, referenced to the latest sample. Meaningful
+        // only while `solved`; confidence 0 means the geometry has not yet earned
+        // a usable solution (too few cuts, too short a baseline, or a straight leg
+        // that leaves range unobservable).
+        bool solved = false;
+        b2Vec2 position{ 0.0f, 0.0f };     // estimated contact position (m), at the latest cut
+        b2Vec2 velocity{ 0.0f, 0.0f };     // estimated contact velocity (m/s)
+        float confidence = 0.0f;           // [0,1]; grows with own-ship manoeuvre and a tight fit
+
+        // Solver diagnostics, for the TMA debug readout and for tuning the gates.
+        float observability = 0.0f;        // scaled smallest pivot of the fit; ~0 on a straight leg
+        float residualRad = 0.0f;          // RMS angular misfit of the bearings to the fit
+    };
+
+    // An observing ship's file of passive tracks, keyed by the observed hull's
+    // entity — the persistent counterpart to its ContactPicture. Held only by a
+    // ship that carries a picture (the player, for now). The TMA system opens a
+    // track when a contact is first heard on a bearing, feeds it cuts as own ship
+    // moves, and drops it once the contact is ranged, seen, or lost (contact decay
+    // — carrying a lost track on from its last fix — arrives with the step after).
+    struct TrackFile {
+        std::unordered_map<entt::entity, TmaTrack> tracks;
+    };
+
     // The sounds a hull itself makes, as opposed to the ones its guns and their
     // shots make (those live on Weapon and Projectile). Handles are resolved
     // from the hull definition at spawn; kNoSound is silent.

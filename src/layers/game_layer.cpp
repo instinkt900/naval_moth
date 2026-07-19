@@ -7,6 +7,7 @@
 #include "game/render_system.h"
 #include "game/sensor_system.h"
 #include "game/ship_factory.h"
+#include "game/tma_system.h"
 #include "game/wake_system.h"
 #include "game/wander_system.h"
 
@@ -213,6 +214,12 @@ namespace naval {
         // player carries one today; the enemy aggro still scans hulls directly.)
         UpdateSensors(m_registry, dt);
 
+        // Passive ranging: feed each bearing-only contact's track a fresh cut and
+        // re-solve it. After UpdateSensors so it reads a current picture, and — like
+        // it — before the world step, so a cut and the own-ship position paired with
+        // it are from the same instant (see tma_system).
+        UpdateTMA(m_registry, dt);
+
         // Enemies that sense a foe within aggro range break off to manoeuvre and
         // fight; the rest wander. Aggro runs first so it can claim the helm, and
         // wander then handles only the ships still on patrol. It also issues each
@@ -269,6 +276,7 @@ namespace naval {
         DrawHelmPanel();
         DrawTargetPanel();
         DrawAggroDebug();
+        DrawTmaDebug();
         DrawLayersPanel();
     }
 
@@ -352,6 +360,82 @@ namespace naval {
         ImGui::SliderFloat("Arc switch margin (rad)", &tuning.switchMarginRad, 0.0f, 1.5f, "%.2f");
         ImGui::Checkbox("Show aggro rings", &tuning.showRings);
         ImGui::Checkbox("Show enemy arcs", &m_showEnemyArcs);
+        ImGui::End();
+    }
+
+    void GameLayer::DrawTmaDebug() {
+        auto const* trackFile = m_registry.try_get<TrackFile>(m_ship);
+        ImGui::Begin("TMA (debug)");
+        if (trackFile == nullptr || trackFile->tracks.empty()) {
+            ImGui::TextUnformatted("No passive tracks");
+            ImGui::End();
+            return;
+        }
+
+        // Live confidence gates, dialled against the obs values the tracks below
+        // actually reach. Log sliders, since observability spans orders of
+        // magnitude: raise obsFull toward the obs a good two-leg fix reaches, and
+        // drop minObs below it. See tma_system for what these mean.
+        TmaTuning& tuning = TmaTuningRef();
+        ImGui::SliderFloat("min obs", &tuning.minObs, 1e-9f, 1e-2f, "%.1e", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat("obs full", &tuning.obsFull, 1e-8f, 1.0f, "%.1e", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat("solved floor", &tuning.solvedFloor, 0.0f, 1.0f, "%.2f");
+
+        constexpr float kMetresPerSecToKnots = 1.94384f;
+        b2Vec2 const ownPos = m_registry.get<Physics>(m_ship).body->GetPosition();
+
+        // One block per open track, labelled by its current bearing rather than the
+        // contact's name — the name would leak an identity the passive rung has not
+        // earned. The numbers below the label are the solver's own state, so a
+        // stalled solution reads as either too straight a leg (low observability) or
+        // a poor fit (high misfit), which is exactly what to change own course for.
+        int index = 0;
+        for (auto const& entry : trackFile->tracks) {
+            TmaTrack const& track = entry.second;
+            ImGui::PushID(index++);
+            float const brgDeg = Norm360(track.samples.back().bearing * moth_ui::kRadToDeg);
+            ImGui::Separator();
+            ImGui::TextUnformatted(
+                fmt::format("Brg {:03.0f}   cuts {}", brgDeg, track.samples.size()).c_str());
+
+            // The bearing rate is what predicts whether the geometry can range at
+            // all: TMA lives on the bearing sweeping, so a steady bearing (running
+            // toward or away from the contact) carries no range, however many cuts
+            // pile up. Shown so a barren leg reads as barren before obs is even
+            // computed — cross the bearing, don't close it.
+            float bearingRateDegMin = 0.0f;
+            if (track.samples.size() >= 2) {
+                float const span = track.samples.back().t - track.samples.front().t;
+                float const d = track.samples.back().bearing - track.samples.front().bearing;
+                float const dWrapped = std::atan2(std::sin(d), std::cos(d)); // shortest arc, rad
+                if (span > 0.0f) {
+                    bearingRateDegMin = (dWrapped * moth_ui::kRadToDeg / span) * 60.0f;
+                }
+            }
+            ImGui::TextUnformatted(fmt::format("brg rate {:+.1f} deg/min", bearingRateDegMin).c_str());
+            if (!track.solved && std::abs(bearingRateDegMin) < 1.0f) {
+                ImGui::TextDisabled("steady bearing: steam across it, not toward it");
+            }
+
+            ImGui::TextUnformatted(fmt::format("obs {:.2e}   misfit {:.2f} deg",
+                                               track.observability,
+                                               track.residualRad * moth_ui::kRadToDeg)
+                                       .c_str());
+            ImGui::ProgressBar(track.confidence, ImVec2(-1.0f, 0.0f),
+                               fmt::format("conf {:.0f}%", track.confidence * 100.0f).c_str());
+            if (track.solved) {
+                float const rangeM = (track.position - ownPos).Length();
+                float const crsDeg = Norm360(std::atan2(track.velocity.y, track.velocity.x) * moth_ui::kRadToDeg);
+                float const spdKn = track.velocity.Length() * kMetresPerSecToKnots;
+                ImGui::TextUnformatted(
+                    fmt::format("est rng {:.0f} m   crs {:03.0f}   spd {:.1f} kn", rangeM, crsDeg, spdKn)
+                        .c_str());
+            } else {
+                ImGui::TextUnformatted("no solution");
+            }
+            ImGui::PopID();
+        }
+
         ImGui::End();
     }
 

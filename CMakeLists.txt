@@ -25,6 +25,7 @@ set(SOURCES ${SOURCES}
 	src/game/sensor_system.cpp
 	src/game/ship_factory.cpp
 	src/game/terrain.cpp
+	src/game/tma_system.cpp
 	src/game/wake_system.cpp
 	src/game/wander_system.cpp
 	src/layers/game_layer.cpp

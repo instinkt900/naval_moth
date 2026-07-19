@@ -33,6 +33,7 @@ namespace naval {
         const moth_ui::Color kContactColor{ 0.45f, 0.85f, 0.75f, 0.90f };         // radar contact blip (any contact the sweep paints)
         const moth_ui::Color kRadarRingColor{ 0.45f, 0.85f, 0.75f, 0.14f };       // active radar reach, drawn while radiating
         const moth_ui::Color kBearingColor{ 0.95f, 0.88f, 0.25f, 0.85f };         // passive ESM bearing line (direction, no range; length = strength)
+        const moth_ui::Color kTmaFixColor{ 1.00f, 0.72f, 0.30f, 0.90f };          // solved TMA estimate: uncertainty ring + course stalk (an estimate, not a hard fix)
         const moth_ui::Color kOwnBlipColor{ 0.55f, 0.85f, 1.00f, 0.95f };         // own-ship mark on the plot (ring + heading stalk), distinct from contacts
 
         // --- wake ---
@@ -146,14 +147,56 @@ namespace naval {
         // signal the longer the line — a loud, near or big emitter reaches out
         // toward passive range, a faint one is a short stub — which reads as "big
         // or near" without ever telling the two apart (see Contact::strength).
-        graphics.SetColor(kBearingColor);
-        constexpr float kMinLenFrac = 0.12f; // shortest line, as a fraction of the drawn reach
-        constexpr float kLenScale = 0.1f;    // line length as a fraction of passive reach at full strength
+        auto const* trackFile = registry.try_get<TrackFile>(viewer);
+        constexpr float kMinLenFrac = 0.12f; // shortest stub, as a fraction of the drawn reach
+        constexpr float kLenScale = 0.1f;    // stub length as a fraction of passive reach at full strength
         for (auto const& entry : picture->contacts) {
             Contact const& contact = entry.second;
             if (contact.level != DetectLevel::Bearing) {
                 continue;
             }
+
+            // A solved TMA track turns the bare bearing into a positioned estimate:
+            // the line runs out to the solved range and carries an uncertainty ring
+            // that tightens as the fit firms up, plus a short course stalk showing
+            // the estimated heading and speed. It is an estimate, not a hard fix, so
+            // the mark is drawn softer than a ranged blip and never a solid diamond.
+            TmaTrack const* track = nullptr;
+            if (trackFile != nullptr) {
+                auto const it = trackFile->tracks.find(entry.first);
+                if (it != trackFile->tracks.end() && it->second.solved) {
+                    track = &it->second;
+                }
+            }
+
+            if (track != nullptr) {
+                moth_ui::FloatVec2 const estPx = camera.WorldToScreen(track->position);
+                graphics.SetColor(kBearingColor);
+                graphics.DrawLineF(selfPx, estPx);
+
+                // Uncertainty ring: wide while the solution is soft, tightening
+                // toward a tick as confidence climbs. A fixed screen size so it
+                // reads at any zoom, and brighter the surer the fit.
+                constexpr float kUncMaxPx = 46.0f;
+                constexpr float kUncMinPx = 10.0f;
+                float const uncPx = kUncMaxPx + ((kUncMinPx - kUncMaxPx) * track->confidence);
+                graphics.SetColor(moth_ui::Color{ kTmaFixColor.r, kTmaFixColor.g, kTmaFixColor.b,
+                                                  kTmaFixColor.a * (0.35f + (0.65f * track->confidence)) });
+                DrawCircle(graphics, estPx, uncPx);
+
+                // Course stalk: the estimated velocity struck out from the estimate,
+                // a few seconds of run so a faster track reads as a longer line.
+                // World endpoint through the camera so it points true at any zoom.
+                constexpr float kCourseLeadS = 8.0f;
+                b2Vec2 const ahead{ track->position.x + (track->velocity.x * kCourseLeadS),
+                                    track->position.y + (track->velocity.y * kCourseLeadS) };
+                graphics.DrawLineF(estPx, camera.WorldToScreen(ahead));
+                continue;
+            }
+
+            // No solution yet: the bare bearing, a stub struck out along it whose
+            // length reads the signal strength (big or near), no range implied.
+            graphics.SetColor(kBearingColor);
             float const len =
                 sensors->passiveRangeM * kLenScale * (kMinLenFrac + ((1.0f - kMinLenFrac) * contact.strength));
             b2Vec2 const end{ selfPos.x + (len * std::cos(contact.bearing)),

@@ -60,6 +60,10 @@ namespace naval {
         // target-picking to what it can actually detect.
         if (faction == Faction::Player) {
             registry.emplace<ContactPicture>(entity, ContactPicture{});
+            // The passive track file rides alongside the picture: the TMA system
+            // opens a track per bearing-only contact and solves it for a range as
+            // the player manoeuvres (see tma_system).
+            registry.emplace<TrackFile>(entity, TrackFile{});
         }
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
         registry.emplace<Helm>(entity, Helm{});
