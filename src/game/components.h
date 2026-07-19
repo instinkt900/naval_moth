@@ -396,10 +396,19 @@ namespace naval {
         Visual,     // inside visual range: the real hull, full truth
     };
 
+    // How long a lost contact lingers on the picture before it is forgotten. A
+    // positioned contact (Ranged or Visual) that drops out of sensor reach is not
+    // erased at once: it is held as a decaying track from its last-known position
+    // for this long, fading as it ages, then dropped (PLAN's contact decay).
+    // Shared by the sensor system (which ages and expires a track) and the renderer
+    // (which fades the mark over it), so the two never disagree.
+    inline constexpr float kContactDecayS = 20.0f;
+
     // What one observing ship knows about one contact, at the moment its picture
     // was last refreshed. Held in a ContactPicture, keyed by the observed hull's
-    // entity. Fields beyond the level fill in as the rungs that need them (a
-    // last-known position for a lost track, a solved range) arrive.
+    // entity. The picture is updated in place across ticks (not rebuilt), so a
+    // contact carries a little memory: where it was last fixed, and how long since
+    // it was last held.
     struct Contact {
         DetectLevel level = DetectLevel::Bearing;
 
@@ -420,6 +429,34 @@ namespace naval {
         // "big or near" without ever giving the range apart. The renderer shows it
         // as the wedge's brightness and how tight a cut it is.
         float strength = 0.0f;
+
+        // The last position the contact was *fixed* at, and whether it holds one.
+        // Set from the hull's true position each tick a Ranged or Visual detection
+        // lands; a bare bearing yields no fix and leaves hasPos false. This is what
+        // a lost track decays from — the mark stays put at the last-known point
+        // while the real hull steams on unseen — and what the radar blip is drawn
+        // at, so a stale contact freezes rather than tracking a hull it no longer
+        // holds.
+        b2Vec2 lastPos{ 0.0f, 0.0f };
+        bool hasPos = false;
+
+        // Seconds since the contact was last detected at *any* rung (bearing,
+        // ranged or visual). Zero on any tick a detection refreshes it; it climbs
+        // once the contact drops out of all reach. Governs whether the track is
+        // still held at all — a contact neither detected nor still carrying a
+        // visible position ghost is forgotten. SeesHull also reads it: a visual
+        // contact is only "seen" while this is zero.
+        float staleness = 0.0f;
+
+        // Seconds since the contact was last *positionally fixed* — a Ranged or
+        // Visual detection, the rungs that give a real position. A bearing does not
+        // reset it: direction is not a fix. So a contact that drops from an active
+        // fix down to a passive bearing keeps a live bearing (staleness zero) while
+        // its last-known position goes stale (this climbing) — the blip decays as a
+        // ghost from lastPos over kContactDecayS even as the bearing line stays
+        // fresh. Governs the radar blip and its fade, where staleness governs
+        // retention.
+        float fixStaleness = 0.0f;
     };
 
     // A ship's own picture of the sea: every contact it holds and how well it
@@ -435,14 +472,18 @@ namespace naval {
         std::unordered_map<entt::entity, Contact> contacts;
     };
 
-    // Whether `picture` holds `contact` at the Visual rung — the observer actually
-    // sees the hull, as opposed to holding only a ranged blip (or nothing). This
-    // is the gate for drawing a contact as its literal hull, with its wake and
-    // firing arcs; a merely ranged contact draws as a bare radar mark instead (see
-    // DrawContacts), so those hull visuals must not leak from it.
+    // Whether `picture` holds `contact` at the Visual rung *this tick* — the
+    // observer actually sees the hull right now, as opposed to holding only a
+    // ranged blip, a decaying last-known track, or nothing. This is the gate for
+    // drawing a contact as its literal hull, with its wake and firing arcs; a
+    // ranged or stale contact draws as a bare radar mark instead (see
+    // DrawContacts), so those hull visuals must not leak from it. The freshness
+    // test is what keeps a *lost* visual contact from still drawing its live hull:
+    // once it goes stale it ghosts from its last-known position like any other.
     inline bool SeesHull(ContactPicture const& picture, entt::entity contact) {
         auto const it = picture.contacts.find(contact);
-        return it != picture.contacts.end() && it->second.level == DetectLevel::Visual;
+        return it != picture.contacts.end() && it->second.level == DetectLevel::Visual &&
+               it->second.staleness == 0.0f;
     }
 
     // One passive contact's target-motion-analysis track: the rolling history of

@@ -31,6 +31,7 @@ namespace naval {
         const moth_ui::Color kCiwsTracerColor{ 1.00f, 0.85f, 0.35f, 0.9f };       // point-defence tracer rounds
         const moth_ui::Color kCiwsMuzzleColor{ 1.00f, 0.95f, 0.70f, 1.0f };       // point-defence muzzle flash and target sparkle
         const moth_ui::Color kContactColor{ 0.45f, 0.85f, 0.75f, 0.90f };         // radar contact blip (any contact the sweep paints)
+        const moth_ui::Color kStaleContactColor{ 0.55f, 0.60f, 0.62f, 0.75f };    // lost-track ghost, greyed; alpha fades over kContactDecayS
         const moth_ui::Color kRadarRingColor{ 0.45f, 0.85f, 0.75f, 0.14f };       // active radar reach, drawn while radiating
         const moth_ui::Color kBearingColor{ 0.95f, 0.88f, 0.25f, 0.85f };         // passive ESM bearing line (direction, no range; length = strength)
         const moth_ui::Color kTmaFixColor{ 1.00f, 0.72f, 0.30f, 0.90f };          // solved TMA estimate: uncertainty ring + course stalk (an estimate, not a hard fix)
@@ -126,6 +127,72 @@ namespace naval {
                                                { targetPx.x + 8.0f, targetPx.y + 8.0f } });
     }
 
+    namespace {
+        // The viewer's passive picture: for each contact heard but not positioned,
+        // a bearing struck out from own ship along its direction — a direction with
+        // the range deliberately unknown — whose length reads the signal strength (a
+        // loud, near or big emitter reaches out toward passive range, a faint one is
+        // a short stub, which says "big or near" without telling the two apart, see
+        // Contact::strength). Where the TMA solver has ranged one instead (see
+        // tma_system), the line runs to the estimated position with an uncertainty
+        // ring that tightens as confidence firms and a course stalk for the
+        // estimated heading and speed — an estimate, so drawn softer than a ranged
+        // blip and never a solid diamond. Everything is built in world space from
+        // the stored bearing or estimate, never the hull's true position, so a bare
+        // bearing leaks no range.
+        void DrawPassiveBearings(moth_graphics::graphics::IGraphics& graphics, Camera const& camera,
+                                 b2Vec2 selfPos, moth_ui::FloatVec2 selfPx, float passiveRangeM,
+                                 ContactPicture const& picture, TrackFile const* trackFile) {
+            constexpr float kMinLenFrac = 0.12f; // shortest stub, as a fraction of the drawn reach
+            constexpr float kLenScale = 0.1f;    // stub length as a fraction of passive reach at full strength
+            for (auto const& entry : picture.contacts) {
+                Contact const& contact = entry.second;
+                if (contact.level != DetectLevel::Bearing) {
+                    continue;
+                }
+
+                TmaTrack const* track = nullptr;
+                if (trackFile != nullptr) {
+                    auto const it = trackFile->tracks.find(entry.first);
+                    if (it != trackFile->tracks.end() && it->second.solved) {
+                        track = &it->second;
+                    }
+                }
+
+                if (track != nullptr) {
+                    moth_ui::FloatVec2 const estPx = camera.WorldToScreen(track->position);
+                    graphics.SetColor(kBearingColor);
+                    graphics.DrawLineF(selfPx, estPx);
+
+                    // Uncertainty ring: wide while the solution is soft, tightening
+                    // toward a tick as confidence climbs, and brighter the surer the
+                    // fit. Fixed screen size so it reads at any zoom.
+                    constexpr float kUncMaxPx = 46.0f;
+                    constexpr float kUncMinPx = 10.0f;
+                    float const uncPx = kUncMaxPx + ((kUncMinPx - kUncMaxPx) * track->confidence);
+                    graphics.SetColor(moth_ui::Color{ kTmaFixColor.r, kTmaFixColor.g, kTmaFixColor.b,
+                                                      kTmaFixColor.a * (0.35f + (0.65f * track->confidence)) });
+                    DrawCircle(graphics, estPx, uncPx);
+
+                    // Course stalk: the estimated velocity struck out from the
+                    // estimate, a few seconds of run so a faster track reads longer.
+                    constexpr float kCourseLeadS = 8.0f;
+                    b2Vec2 const ahead{ track->position.x + (track->velocity.x * kCourseLeadS),
+                                        track->position.y + (track->velocity.y * kCourseLeadS) };
+                    graphics.DrawLineF(estPx, camera.WorldToScreen(ahead));
+                    continue;
+                }
+
+                graphics.SetColor(kBearingColor);
+                float const len =
+                    passiveRangeM * kLenScale * (kMinLenFrac + ((1.0f - kMinLenFrac) * contact.strength));
+                b2Vec2 const end{ selfPos.x + (len * std::cos(contact.bearing)),
+                                  selfPos.y + (len * std::sin(contact.bearing)) };
+                graphics.DrawLineF(selfPx, camera.WorldToScreen(end));
+            }
+        }
+    }
+
     void DrawContacts(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer) {
         auto const* sensors = registry.try_get<Sensors>(viewer);
         auto const* picture = registry.try_get<ContactPicture>(viewer);
@@ -139,70 +206,10 @@ namespace naval {
         b2Vec2 const selfPos = registry.get<Physics>(viewer).body->GetPosition();
         moth_ui::FloatVec2 const selfPx = camera.WorldToScreen(selfPos);
 
-        // Passive ESM bearings, drawn whatever own radar is doing — listening is
-        // always on. An emitting contact heard but not ranged is a single line
-        // struck out from own ship along its bearing: a direction, with the range
-        // deliberately unknown. Built from the stored bearing in world space (never
-        // the hull's true position) so no range can leak in. The stronger the
-        // signal the longer the line — a loud, near or big emitter reaches out
-        // toward passive range, a faint one is a short stub — which reads as "big
-        // or near" without ever telling the two apart (see Contact::strength).
-        auto const* trackFile = registry.try_get<TrackFile>(viewer);
-        constexpr float kMinLenFrac = 0.12f; // shortest stub, as a fraction of the drawn reach
-        constexpr float kLenScale = 0.1f;    // stub length as a fraction of passive reach at full strength
-        for (auto const& entry : picture->contacts) {
-            Contact const& contact = entry.second;
-            if (contact.level != DetectLevel::Bearing) {
-                continue;
-            }
-
-            // A solved TMA track turns the bare bearing into a positioned estimate:
-            // the line runs out to the solved range and carries an uncertainty ring
-            // that tightens as the fit firms up, plus a short course stalk showing
-            // the estimated heading and speed. It is an estimate, not a hard fix, so
-            // the mark is drawn softer than a ranged blip and never a solid diamond.
-            TmaTrack const* track = nullptr;
-            if (trackFile != nullptr) {
-                auto const it = trackFile->tracks.find(entry.first);
-                if (it != trackFile->tracks.end() && it->second.solved) {
-                    track = &it->second;
-                }
-            }
-
-            if (track != nullptr) {
-                moth_ui::FloatVec2 const estPx = camera.WorldToScreen(track->position);
-                graphics.SetColor(kBearingColor);
-                graphics.DrawLineF(selfPx, estPx);
-
-                // Uncertainty ring: wide while the solution is soft, tightening
-                // toward a tick as confidence climbs. A fixed screen size so it
-                // reads at any zoom, and brighter the surer the fit.
-                constexpr float kUncMaxPx = 46.0f;
-                constexpr float kUncMinPx = 10.0f;
-                float const uncPx = kUncMaxPx + ((kUncMinPx - kUncMaxPx) * track->confidence);
-                graphics.SetColor(moth_ui::Color{ kTmaFixColor.r, kTmaFixColor.g, kTmaFixColor.b,
-                                                  kTmaFixColor.a * (0.35f + (0.65f * track->confidence)) });
-                DrawCircle(graphics, estPx, uncPx);
-
-                // Course stalk: the estimated velocity struck out from the estimate,
-                // a few seconds of run so a faster track reads as a longer line.
-                // World endpoint through the camera so it points true at any zoom.
-                constexpr float kCourseLeadS = 8.0f;
-                b2Vec2 const ahead{ track->position.x + (track->velocity.x * kCourseLeadS),
-                                    track->position.y + (track->velocity.y * kCourseLeadS) };
-                graphics.DrawLineF(estPx, camera.WorldToScreen(ahead));
-                continue;
-            }
-
-            // No solution yet: the bare bearing, a stub struck out along it whose
-            // length reads the signal strength (big or near), no range implied.
-            graphics.SetColor(kBearingColor);
-            float const len =
-                sensors->passiveRangeM * kLenScale * (kMinLenFrac + ((1.0f - kMinLenFrac) * contact.strength));
-            b2Vec2 const end{ selfPos.x + (len * std::cos(contact.bearing)),
-                              selfPos.y + (len * std::sin(contact.bearing)) };
-            graphics.DrawLineF(selfPx, camera.WorldToScreen(end));
-        }
+        // Passive ESM bearings and any TMA fixes, drawn whatever own radar is doing
+        // — listening is always on.
+        DrawPassiveBearings(graphics, camera, selfPos, selfPx, sensors->passiveRangeM, *picture,
+                            registry.try_get<TrackFile>(viewer));
 
         // Own ship's own mark on the plot, drawn whatever the radar is doing —
         // own position is never in doubt. A ring with a stalk struck out along the
@@ -219,38 +226,57 @@ namespace naval {
         graphics.DrawLineF(selfPx, { selfPx.x + (kOwnStalkPx * std::cos(heading)),
                                      selfPx.y + (kOwnStalkPx * std::sin(heading)) });
 
-        // Active radar, only while radiating: its reach ring, and a blip over every
-        // contact the sweep paints. A contact that has closed into visual range
-        // keeps its mark atop its hull, so the plot stays complete and a speck at
-        // survey zoom stays findable; a bearing-only contact has no position to
-        // blip and is skipped. The blip is a fixed screen-size glyph, not scaled to
-        // the hull — a radar return is a position, not a size — and an open diamond
-        // keeps it distinct from the target ring (a circle) and the waypoint marker
-        // (a boxed dot).
+        // Every positioned mark is a fixed screen-size open diamond, drawn at the
+        // contact's last-known position — not scaled to the hull (a return is a
+        // position, not a size) and kept distinct from the target ring (a circle)
+        // and the waypoint marker (a boxed dot).
+        constexpr float kBlipPx = 8.0f;
+        auto drawDiamond = [&](moth_ui::FloatVec2 p) {
+            graphics.DrawLineF({ p.x, p.y - kBlipPx }, { p.x + kBlipPx, p.y });
+            graphics.DrawLineF({ p.x + kBlipPx, p.y }, { p.x, p.y + kBlipPx });
+            graphics.DrawLineF({ p.x, p.y + kBlipPx }, { p.x - kBlipPx, p.y });
+            graphics.DrawLineF({ p.x - kBlipPx, p.y }, { p.x, p.y - kBlipPx });
+        };
+
+        // Active radar, only while radiating: its reach ring, and a live blip over
+        // every fresh contact the sweep paints. A contact that has closed into
+        // visual range keeps its mark atop its hull, so the plot stays complete and
+        // a speck at survey zoom stays findable; a bearing-only contact has no
+        // position to blip and is skipped. Drawn from lastPos, which for a fresh
+        // contact is its true position this tick.
         if (sensors->activeOn) {
             graphics.SetColor(kRadarRingColor);
             DrawCircle(graphics, selfPx, camera.MToPx(sensors->activeRangeM));
 
             graphics.SetColor(kContactColor);
-            constexpr float kBlipPx = 8.0f;
             for (auto const& entry : picture->contacts) {
-                if (entry.second.level == DetectLevel::Bearing) {
+                Contact const& contact = entry.second;
+                if (!contact.hasPos || contact.fixStaleness != 0.0f) {
                     continue;
                 }
-                entt::entity const entity = entry.first;
-                if (!registry.valid(entity)) {
-                    continue;
-                }
-                auto const* physics = registry.try_get<Physics>(entity);
-                if (physics == nullptr) {
-                    continue;
-                }
-                moth_ui::FloatVec2 const p = camera.WorldToScreen(physics->body->GetPosition());
-                graphics.DrawLineF({ p.x, p.y - kBlipPx }, { p.x + kBlipPx, p.y });
-                graphics.DrawLineF({ p.x + kBlipPx, p.y }, { p.x, p.y + kBlipPx });
-                graphics.DrawLineF({ p.x, p.y + kBlipPx }, { p.x - kBlipPx, p.y });
-                graphics.DrawLineF({ p.x - kBlipPx, p.y }, { p.x, p.y - kBlipPx });
+                drawDiamond(camera.WorldToScreen(contact.lastPos));
             }
+        }
+
+        // Lost tracks: a positioned contact no longer held decays from its
+        // last-known position rather than vanishing (see UpdateSensors). A diamond
+        // greyed and fading over its remaining life, drawn whatever the radar is
+        // doing — it is memory, not a live return — so a stale track reads apart
+        // from a fresh one and stays put while the real hull steams on unseen.
+        for (auto const& entry : picture->contacts) {
+            Contact const& contact = entry.second;
+            if (!contact.hasPos || contact.fixStaleness <= 0.0f) {
+                continue;
+            }
+            // A sinking wreck stands in for a contact seen to die, so its track
+            // isn't also ghosted over the top.
+            if (registry.valid(entry.first) && registry.all_of<Sinking>(entry.first)) {
+                continue;
+            }
+            float const life = std::clamp(1.0f - (contact.fixStaleness / kContactDecayS), 0.0f, 1.0f);
+            graphics.SetColor(moth_ui::Color{ kStaleContactColor.r, kStaleContactColor.g,
+                                              kStaleContactColor.b, kStaleContactColor.a * life });
+            drawDiamond(camera.WorldToScreen(contact.lastPos));
         }
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }

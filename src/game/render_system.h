@@ -45,9 +45,11 @@ namespace naval {
     // (a ring with a heading stalk, distinct from the contact blips). A bearing the
     // TMA solver has ranged (see tma_system) instead runs out to the estimated
     // position and carries an uncertainty ring that tightens with confidence and a
-    // course stalk. The active radar's reach ring and a blip over every contact it
-    // paints (including one closed into visual range, which keeps its mark atop its
-    // hull) draw only while radiating.
+    // course stalk. The active radar's reach ring and a live blip over every fresh
+    // contact it paints (including one closed into visual range, which keeps its
+    // mark atop its hull) draw only while radiating. A contact that has dropped out
+    // decays as a greyed, fading diamond at its last-known position — drawn
+    // whatever the radar is doing, since it is memory, not a live return.
     void DrawContacts(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer);
 
     // Every visible hull's fading wake, drawn on the water beneath the hulls.
