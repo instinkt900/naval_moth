@@ -20,7 +20,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <random>
+#include <utility>
 
 namespace naval {
     namespace {
@@ -30,6 +32,17 @@ namespace naval {
         float Norm360(float deg) {
             deg = std::fmod(deg, 360.0f);
             return deg < 0.0f ? deg + 360.0f : deg;
+        }
+
+        // A contact's call-sign from its slot index: 0 -> "Blip A", 25 -> "Blip Z",
+        // 26 -> "Blip AA", and up (bijective base-26). Slots are reclaimed as
+        // contacts drop, so a short watch never climbs past the single letters.
+        std::string BlipLabel(int index) {
+            std::string letters;
+            for (int n = index + 1; n > 0; n = (n - 1) / 26) {
+                letters.insert(letters.begin(), static_cast<char>('A' + ((n - 1) % 26)));
+            }
+            return "Blip " + letters;
         }
     }
 
@@ -318,6 +331,7 @@ namespace naval {
 
         DrawHelmPanel();
         DrawTargetPanel();
+        DrawContactList();
         DrawAggroDebug();
         DrawTmaDebug();
         DrawLayersPanel();
@@ -427,19 +441,26 @@ namespace naval {
         constexpr float kMetresPerSecToKnots = 1.94384f;
         b2Vec2 const ownPos = m_registry.get<Physics>(m_ship).body->GetPosition();
 
-        // One block per open track, labelled by its current bearing rather than the
-        // contact's name — the name would leak an identity the passive rung has not
-        // earned. The numbers below the label are the solver's own state, so a
-        // stalled solution reads as either too straight a leg (low observability) or
-        // a poor fit (high misfit), which is exactly what to change own course for.
+        // One block per open track, led by the contact's call-sign so it can be
+        // matched to its row in the Contacts window, then its current bearing. The
+        // call-sign is a neutral tag, not the class — the identity stays masked
+        // here, which the passive rung has not earned. The numbers below are the
+        // solver's own state, so a stalled solution reads as either too straight a
+        // leg (low observability) or a poor fit (high misfit), which is exactly what
+        // to change own course for.
         int index = 0;
         for (auto const& entry : trackFile->tracks) {
             TmaTrack const& track = entry.second;
             ImGui::PushID(index++);
             float const brgDeg = Norm360(track.samples.back().bearing * moth_ui::kRadToDeg);
+            // The Contacts window reconciles the call-sign map before this window
+            // draws (see Draw's order), so a live track's contact has a slot; the
+            // fallback only covers a track outliving its contact by a frame.
+            auto const lit = m_contactLabels.find(entry.first);
+            std::string const name = lit != m_contactLabels.end() ? BlipLabel(lit->second) : "Blip ?";
             ImGui::Separator();
             ImGui::TextUnformatted(
-                fmt::format("Brg {:03.0f}   cuts {}", brgDeg, track.samples.size()).c_str());
+                fmt::format("{}   Brg {:03.0f}   cuts {}", name, brgDeg, track.samples.size()).c_str());
 
             // The bearing rate is what predicts whether the geometry can range at
             // all: TMA lives on the bearing sweeping, so a steady bearing (running
@@ -477,6 +498,138 @@ namespace naval {
                 ImGui::TextUnformatted("no solution");
             }
             ImGui::PopID();
+        }
+
+        ImGui::End();
+    }
+
+    void GameLayer::DrawContactList() {
+        auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
+
+        // Reconcile the call-sign map with the live picture before drawing. Drop
+        // labels whose contact the ship no longer holds first, so a freed slot can
+        // be reused; then hand any newly held contact the lowest free slot. Kept in
+        // step with the picture here rather than in the sensor system because a
+        // name is a presentation concern, not a measurement.
+        for (auto it = m_contactLabels.begin(); it != m_contactLabels.end();) {
+            it = contacts.count(it->first) != 0 ? std::next(it) : m_contactLabels.erase(it);
+        }
+        for (auto const& entry : contacts) {
+            if (m_contactLabels.count(entry.first) != 0) {
+                continue;
+            }
+            int slot = 0;
+            for (bool taken = true; taken;) {
+                taken = false;
+                for (auto const& kv : m_contactLabels) {
+                    if (kv.second == slot) {
+                        taken = true;
+                        ++slot;
+                        break;
+                    }
+                }
+            }
+            m_contactLabels.emplace(entry.first, slot);
+        }
+
+        ImGui::Begin("Contacts");
+        if (contacts.empty()) {
+            ImGui::TextUnformatted("No contacts held");
+            ImGui::End();
+            return;
+        }
+
+        // Sort by slot so the rows hold a stable order (Blip A, B, C...) rather
+        // than jumping frame to frame with the unordered picture's iteration.
+        std::vector<std::pair<int, entt::entity>> rows;
+        rows.reserve(contacts.size());
+        for (auto const& entry : contacts) {
+            rows.emplace_back(m_contactLabels.at(entry.first), entry.first);
+        }
+        std::sort(rows.begin(), rows.end(),
+                  [](auto const& a, auto const& b) { return a.first < b.first; });
+
+        constexpr float kMetresPerSecToKnots = 1.94384f;
+        b2Vec2 const shipPos = m_registry.get<Physics>(m_ship).body->GetPosition();
+
+        if (ImGui::BeginTable("contacts", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Name");
+            ImGui::TableSetupColumn("How");
+            ImGui::TableSetupColumn("Class");
+            ImGui::TableSetupColumn("Brg");
+            ImGui::TableSetupColumn("Rng");
+            ImGui::TableSetupColumn("Motion");
+            ImGui::TableHeadersRow();
+
+            for (auto const& [slot, entity] : rows) {
+                Contact const& c = contacts.at(entity);
+                AimBelief const belief = KnownAim(m_registry, m_ship, entity);
+                bool const fresh = c.staleness == 0.0f;
+
+                // A row dimmed once the contact is no longer detected this tick — a
+                // coasting radar ghost or a lapsed bearing — so a live plot reads
+                // apart from a decaying one at a glance.
+                auto cell = [fresh](std::string const& s) {
+                    if (fresh) {
+                        ImGui::TextUnformatted(s.c_str());
+                    } else {
+                        ImGui::TextDisabled("%s", s.c_str());
+                    }
+                };
+
+                // How it is held, at the rung it has earned: seen outright, a radar
+                // fix, or a bare passive bearing. Never more than the ship knows.
+                char const* how = c.level == DetectLevel::Visual    ? "Visual"
+                                  : c.level == DetectLevel::Bearing ? "ESM"
+                                                                    : "Radar";
+
+                // Class resolves only once identified; a positioned but unclassified
+                // return stays Unknown, as at the head of the Target window.
+                std::string cls = "Unknown";
+                if (c.identified) {
+                    auto const* id = m_registry.try_get<Identity>(entity);
+                    cls = id != nullptr ? id->name : "contact";
+                }
+
+                // Bearing is always known — off the fix if there is one, else the
+                // raw passive cut. Range shows only when a fix (or a solved TMA
+                // estimate, marked "~") places the contact; a bare bearing shows
+                // none, never leaking the range ESM did not give. Motion stays
+                // masked until the class (or a passive solution) resolves, mirroring
+                // the belief KnownAim reports.
+                float brgRad = c.bearing;
+                std::string rng = "---";
+                std::string motion = "---";
+                if (belief.ok) {
+                    b2Vec2 const to = belief.pos - shipPos;
+                    brgRad = std::atan2(to.y, to.x);
+                    rng = fmt::format("{}{:.1f} km", belief.estimate ? "~" : "", to.Length() / 1000.0f);
+                    if (c.identified || belief.estimate) {
+                        float const spdKn = belief.vel.Length() * kMetresPerSecToKnots;
+                        float const crsDeg =
+                            belief.estimate
+                                ? Norm360(std::atan2(belief.vel.y, belief.vel.x) * moth_ui::kRadToDeg)
+                                : Norm360(m_registry.get<Physics>(entity).body->GetAngle() * moth_ui::kRadToDeg);
+                        motion = fmt::format("crs {:03.0f}  {:.0f} kn", crsDeg, spdKn);
+                    }
+                }
+                float const brgDeg = Norm360(brgRad * moth_ui::kRadToDeg);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                cell(BlipLabel(slot));
+                ImGui::TableNextColumn();
+                cell(how);
+                ImGui::TableNextColumn();
+                cell(cls);
+                ImGui::TableNextColumn();
+                cell(fmt::format("{:03.0f}", brgDeg));
+                ImGui::TableNextColumn();
+                cell(rng);
+                ImGui::TableNextColumn();
+                cell(motion);
+            }
+            ImGui::EndTable();
         }
 
         ImGui::End();

@@ -8,6 +8,7 @@
 
 #include <box2d/box2d.h>
 #include <entt/entt.hpp>
+#include <unordered_map>
 #include <moth_ui/events/event_key.h>
 #include <moth_ui/events/event_mouse.h>
 #include <moth_ui/layers/layer.h>
@@ -91,6 +92,16 @@ namespace naval {
         // toggles, and a line of what that gun is doing about the order.
         void DrawWeaponControls();
 
+        // ImGui window listing every contact the player holds — the whole picture
+        // as a table, complementing the plot: an auto-assigned call-sign (Blip A,
+        // B...), how it is held (Visual/Radar/ESM), its class once identified, and
+        // the range/bearing/motion known at the rung it has earned. A bare passive
+        // bearing shows its cut but no range; a positioned but unclassified return
+        // stays Unknown — the list never shows more than the sensors have earned
+        // (see KnownAim). Call-signs are pinned here on the layer, not on the
+        // Contact, and persist across the picture's per-tick rebuild.
+        void DrawContactList();
+
         // ImGui window with live sliders over the shared aggro tuning, for
         // dialling in enemy engagement behaviour without a rebuild.
         void DrawAggroDebug();
@@ -129,6 +140,14 @@ namespace naval {
         // before anything spawns, since spawning resolves sound handles here.
         Audio m_audio;
         entt::entity m_ship;
+        // The player's auto-assigned contact call-signs, keyed by the observed
+        // hull's entity and holding each contact's slot index (0 -> "Blip A").
+        // Slots are handed out lowest-free and reclaimed when a contact drops from
+        // the picture, so labels stay short over a long watch. Lives on the layer
+        // rather than the Contact because a call-sign is a label the player pins on
+        // a track, not something the sensors measure — and it has to outlast the
+        // per-tick rebuild of the contact picture.
+        std::unordered_map<entt::entity, int> m_contactLabels;
         // Debug draw toggle: whether enemy ships' firing arcs are drawn. The
         // player's own arcs are always shown; this only hides the AI batteries,
         // which otherwise clutter the view once several ships are in range.
