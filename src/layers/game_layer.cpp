@@ -3,6 +3,7 @@
 #include "game/aggro_system.h"
 #include "game/combat_system.h"
 #include "game/components.h"
+#include "game/emcon_system.h"
 #include "game/propulsion_system.h"
 #include "game/render_system.h"
 #include "game/sensor_system.h"
@@ -244,11 +245,17 @@ namespace naval {
         m_audio.SetListener(m_camera);
         m_shake.SetCamera(m_camera);
 
-        // Refresh each ship's contact picture before anything reads it — the
-        // aggro steering below, the render loop, and target-picking all consult
-        // what a ship can detect, so its picture must be current first. (Only the
-        // player carries one today; the enemy aggro still scans hulls directly.)
+        // Refresh every ship's contact picture before anything reads it — the aggro
+        // steering below, both sides' gunnery, the render loop, and target-picking all
+        // consult what a ship can detect, so its picture must be current first. Every
+        // combatant carries one now: the enemy fights off its own sensors, not truth.
         UpdateSensors(m_registry, dt);
+
+        // Then let each AI ship set its own radar from that picture: it goes active
+        // while it holds a contact and dark when it holds none (see UpdateEmcon).
+        // After UpdateSensors so it reads a current picture; the activeOn it sets is
+        // read by the next tick's sensor pass, closing the two-sided EMCON loop.
+        UpdateEmcon(m_registry);
 
         // Passive ranging: feed each bearing-only contact's track a fresh cut and
         // re-solve it. After UpdateSensors so it reads a current picture, and — like

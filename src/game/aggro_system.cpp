@@ -12,23 +12,32 @@
 
 namespace naval {
     namespace {
-        // Nearest living hull of a faction opposing `faction`, or entt::null if
-        // there is none. `outDist` is set to its range when one is found.
-        entt::entity NearestFoe(entt::registry& registry, entt::entity self,
-                                b2Vec2 selfPos, Faction faction, float& outDist) {
+        // The nearest foe the ship holds a firing fix on, drawn from its own contact
+        // picture rather than omniscient truth, or entt::null if it holds none. Only
+        // a positional contact counts — a radar or visual fix, fresh or a still-
+        // decaying ghost — never a bare passive bearing, which gives a direction but
+        // no point to steer onto or lay guns on. A sinking target is skipped so the
+        // ship does not keep working a wreck. `outPos` is set to the believed
+        // position of the chosen contact (its last-known fix) and `outDist` to the
+        // believed range; the caller steers and ranges on those, so losing the fix —
+        // the target running out of sensor reach — is what makes the ship break off.
+        entt::entity NearestFix(entt::registry& registry, ContactPicture const& picture,
+                                b2Vec2 selfPos, b2Vec2& outPos, float& outDist) {
             entt::entity nearest = entt::null;
             float nearestDist = std::numeric_limits<float>::max();
-            for (auto other : registry.view<Physics, Combatant>()) {
-                if (other == self || registry.get<Combatant>(other).faction == faction) {
+            for (auto const& entry : picture.contacts) {
+                Contact const& c = entry.second;
+                if (!c.hasPos || c.level == DetectLevel::Bearing) {
                     continue;
                 }
-                if (registry.all_of<Sinking>(other)) {
+                if (registry.all_of<Sinking>(entry.first)) {
                     continue;
                 }
-                float const d = (registry.get<Physics>(other).body->GetPosition() - selfPos).Length();
+                float const d = (c.lastPos - selfPos).Length();
                 if (d < nearestDist) {
                     nearestDist = d;
-                    nearest = other;
+                    nearest = entry.first;
+                    outPos = c.lastPos;
                 }
             }
             outDist = nearestDist;
@@ -84,7 +93,7 @@ namespace naval {
     void UpdateAggro(entt::registry& registry, float /*dt*/) {
         AggroTuning const& tuning = AggroTuningRef();
 
-        auto view = registry.view<Physics, Combatant, Armament, Aggro, FireOrder, Helm, MoveTarget>();
+        auto view = registry.view<Physics, Combatant, Armament, Aggro, FireOrder, Helm, MoveTarget, ContactPicture>();
         for (auto entity : view) {
             auto& aggro = view.get<Aggro>(entity);
 
@@ -98,10 +107,15 @@ namespace naval {
 
             b2Body* body = view.get<Physics>(entity).body;
             b2Vec2 const selfPos = body->GetPosition();
-            Faction const faction = view.get<Combatant>(entity).faction;
 
+            // Fight only what the ship's own sensors hold as a fix (see NearestFix):
+            // the acquisition, the standoff and the steering below all run off this
+            // believed position, so a target that slips out of sensor reach is one
+            // the ship loses and breaks off from, not one it keeps chasing by truth.
+            ContactPicture const& picture = view.get<ContactPicture>(entity);
+            b2Vec2 targetPos{ 0.0f, 0.0f };
             float nearestDist = std::numeric_limits<float>::max();
-            entt::entity const nearest = NearestFoe(registry, entity, selfPos, faction, nearestDist);
+            entt::entity const nearest = NearestFix(registry, picture, selfPos, targetPos, nearestDist);
 
             // Enter/exit engagement with hysteresis: wake inside aggro range,
             // break off past the larger disengage range, otherwise hold on.
@@ -135,7 +149,7 @@ namespace naval {
             view.get<MoveTarget>(entity).active = false;
             auto& helm = view.get<Helm>(entity);
 
-            b2Vec2 const toTarget = registry.get<Physics>(aggro.target).body->GetPosition() - selfPos;
+            b2Vec2 const toTarget = targetPos - selfPos;
             float const range = toTarget.Length();
             float const beta = std::atan2(toTarget.y, toTarget.x); // world bearing to the foe
             float const shipAngle = body->GetAngle();

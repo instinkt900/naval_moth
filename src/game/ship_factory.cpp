@@ -47,22 +47,20 @@ namespace naval {
                                                          hull.foreShoulder, hull.foreShoulderBeam,
                                                          hull.aftShoulder, hull.aftShoulderBeam });
         registry.emplace<Identity>(entity, Identity{ hull.name });
-        // Enemies radiate by default so the player's passive ESM has something to
-        // hear (and, being omniscient, they give up nothing by it); the player
-        // starts silent and chooses when to go active. A placeholder until enemy
-        // EMCON is a decision of its own.
+        // Every ship starts dark: radiating is a choice, not a default. The player
+        // toggles its radar by hand; an AI ship runs its own emissions control (see
+        // UpdateEmcon), going active only once it holds a contact worth ranging. So
+        // the sea begins silent and the first ship to emit is the first one heard.
         registry.emplace<Sensors>(entity, Sensors{ hull.visualRangeM, hull.activeRangeM,
-                                                   hull.passiveRangeM, faction == Faction::Enemy });
-        // Only the player keeps a contact picture; the enemy is left omniscient
-        // (its aggro system scans hulls directly) until the fight is two-sided, so
-        // giving it a picture now would be dead weight the sensor system fills and
-        // nothing reads. The player's picture is what gates its rendering and
-        // target-picking to what it can actually detect.
+                                                   hull.passiveRangeM, false });
+        // Every combatant now keeps its own contact picture: the fight is two-sided,
+        // so an enemy holds only what its sensors detect — its aggro steering and its
+        // gunnery (via KnownAim) both read this picture, not omniscient truth — just
+        // as the player does. The passive track file, though, rides only with the
+        // player: target motion analysis is a player affordance, since an AI ship
+        // simply goes active to range a bearing rather than solving one by manoeuvre.
+        registry.emplace<ContactPicture>(entity, ContactPicture{});
         if (faction == Faction::Player) {
-            registry.emplace<ContactPicture>(entity, ContactPicture{});
-            // The passive track file rides alongside the picture: the TMA system
-            // opens a track per bearing-only contact and solves it for a range as
-            // the player manoeuvres (see tma_system).
             registry.emplace<TrackFile>(entity, TrackFile{});
         }
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });

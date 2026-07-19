@@ -19,6 +19,7 @@ set(SOURCES ${SOURCES}
 	src/game/camera_shake.cpp
 	src/game/combat_system.cpp
 	src/game/defs.cpp
+	src/game/emcon_system.cpp
 	src/game/miniaudio_impl.cpp
 	src/game/propulsion_system.cpp
 	src/game/render_system.cpp
