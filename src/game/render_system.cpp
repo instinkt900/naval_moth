@@ -33,6 +33,7 @@ namespace naval {
         const moth_ui::Color kContactColor{ 0.45f, 0.85f, 0.75f, 0.90f };         // radar contact blip (any contact the sweep paints)
         const moth_ui::Color kRadarRingColor{ 0.45f, 0.85f, 0.75f, 0.14f };       // active radar reach, drawn while radiating
         const moth_ui::Color kBearingColor{ 0.95f, 0.88f, 0.25f, 0.85f };         // passive ESM bearing line (direction, no range; length = strength)
+        const moth_ui::Color kOwnBlipColor{ 0.55f, 0.85f, 1.00f, 0.95f };         // own-ship mark on the plot (ring + heading stalk), distinct from contacts
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -159,6 +160,21 @@ namespace naval {
                               selfPos.y + (len * std::sin(contact.bearing)) };
             graphics.DrawLineF(selfPx, camera.WorldToScreen(end));
         }
+
+        // Own ship's own mark on the plot, drawn whatever the radar is doing —
+        // own position is never in doubt. A ring with a stalk struck out along the
+        // heading, distinct from the open-diamond contact blips so the player picks
+        // themselves out of the plot at a glance, and the one mark that carries a
+        // heading rather than only a position. Screen-space pixels like the blips,
+        // so it holds its size at any zoom; the heading is the body's angle used
+        // directly, the same convention DrawShip lays the hull down with.
+        graphics.SetColor(kOwnBlipColor);
+        float const heading = registry.get<Physics>(viewer).body->GetAngle();
+        constexpr float kOwnRingPx = 6.0f;
+        constexpr float kOwnStalkPx = 15.0f;
+        DrawCircle(graphics, selfPx, kOwnRingPx);
+        graphics.DrawLineF(selfPx, { selfPx.x + (kOwnStalkPx * std::cos(heading)),
+                                     selfPx.y + (kOwnStalkPx * std::sin(heading)) });
 
         // Active radar, only while radiating: its reach ring, and a blip over every
         // contact the sweep paints. A contact that has closed into visual range

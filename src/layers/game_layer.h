@@ -18,6 +18,7 @@ namespace moth_graphics::graphics {
 
 namespace naval {
     struct FireOrder;
+    struct ContactPicture;
 
     // The play space: owns the ECS registry and the Box2D world, steps the
     // simulation at the fixed tick, and renders the sea, ship and move target.
@@ -41,6 +42,17 @@ namespace naval {
 
         // Scatter enemies across open water in a ring around the player start.
         void SpawnEnemies();
+
+        // The frame's four render layers, composited bottom to top by Draw() and
+        // each toggleable from the Layers panel. Map is the sea and the hulls on
+        // it; radar overlays the sensor picture; tactical draws the command picture
+        // (arcs, tracks, shots) over that; debug sits on top of everything. The two
+        // that gate enemy draws on what the player can see take the player's
+        // contact picture.
+        void DrawMapLayer(ContactPicture const& picture);
+        void DrawRadarLayer();
+        void DrawTacticalLayer(ContactPicture const& picture);
+        void DrawDebugLayer();
 
         // ImGui window giving direct throttle and rudder control of the player
         // ship, as an alternative to clicking waypoints.
@@ -68,6 +80,13 @@ namespace naval {
         // dialling in enemy engagement behaviour without a rebuild.
         void DrawAggroDebug();
 
+        // ImGui window of render-layer toggles. The frame is composited as four
+        // layers — map (sea, terrain, seen hulls), radar (blips, reach ring,
+        // passive bearings), tactical (arcs, waypoints, projectiles) and debug
+        // (aggro rings, spread previews) — each of which this panel can switch off
+        // to declutter the view while developing.
+        void DrawLayersPanel();
+
         moth_graphics::graphics::IGraphics& m_graphics;
         Camera m_camera;
         // The camera's shake. Owns the jolt; m_camera only carries the offset it
@@ -93,5 +112,13 @@ namespace naval {
         // player's own arcs are always shown; this only hides the AI batteries,
         // which otherwise clutter the view once several ships are in range.
         bool m_showEnemyArcs = true;
+        // Master visibility of each render layer, toggled from the Layers panel.
+        // These gate whole categories of the frame at once; the finer per-feature
+        // toggles (m_showEnemyArcs, aggro showRings, per-weapon showSpread) still
+        // apply within a layer that is shown.
+        bool m_showMapLayer = true;
+        bool m_showRadarLayer = true;
+        bool m_showTacticalLayer = true;
+        bool m_showDebugLayer = true;
     };
 }

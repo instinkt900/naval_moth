@@ -245,47 +245,43 @@ namespace naval {
     }
 
     void GameLayer::Draw() {
-        m_terrain.Draw(m_graphics, m_camera);
-
-        // The player's own picture of the sea gates every enemy visual below —
-        // hulls, wakes and arcs all draw only for a contact it actually holds, so
-        // an undetected enemy leaves nothing on the water (see UpdateSensors).
+        // The frame is composited as four layers, each painting over the last:
+        // map (the sea and the hulls on it), then the radar picture, then the
+        // tactical command picture, then the debug overlays on top. Any of the
+        // four can be switched off from the Layers panel. The player's own contact
+        // picture gates every enemy visual — hulls, wakes and arcs draw only for a
+        // contact it actually holds — so the layers that show enemies take it (see
+        // UpdateSensors).
         auto const& picture = m_registry.get<ContactPicture>(m_ship);
+        if (m_showMapLayer) {
+            DrawMapLayer(picture);
+        }
+        if (m_showRadarLayer) {
+            DrawRadarLayer();
+        }
+        if (m_showTacticalLayer) {
+            DrawTacticalLayer(picture);
+        }
+        if (m_showDebugLayer) {
+            DrawDebugLayer();
+        }
 
-        // Wakes on the water, beneath everything else the ships lay down.
+        DrawHelmPanel();
+        DrawTargetPanel();
+        DrawAggroDebug();
+        DrawLayersPanel();
+    }
+
+    void GameLayer::DrawMapLayer(ContactPicture const& picture) {
+        // The sea and terrain, the fading wake marks and shot splashes on the
+        // water, then the hulls the player actually sees on top. An enemy hull
+        // draws only while seen (a merely ranged contact is a radar blip in the
+        // layer above, not a hull); a wreck is exempt (it has shed the Combatant
+        // the picture is keyed on, and is the visible aftermath of a fight the
+        // player was in). The player's own hull is drawn last so it stays topmost.
+        m_terrain.Draw(m_graphics, m_camera);
         DrawWakes(m_graphics, m_registry, m_camera, m_ship, picture);
-
-        // Splashes from spent shots, on the water alongside the wakes.
         DrawSplashes(m_graphics, m_registry, m_camera);
-
-        // Aggro-range rings around the AI ships (debug aid), beneath the arcs.
-        for (auto ship : m_registry.view<Physics, Aggro>()) {
-            DrawAggroRing(m_graphics, m_registry, m_camera, ship);
-        }
-
-        // Firing arcs beneath the hulls, for every armed ship still alive. An
-        // enemy's arcs are gated like its hull (nothing unless the player actually
-        // sees it — a ranged blip carries no known armament) and can be hidden even
-        // when seen via the debug toggle; the player's own always draw.
-        for (auto ship : m_registry.view<Physics, Armament>()) {
-            if (m_registry.get<Combatant>(ship).faction == Faction::Enemy &&
-                (!m_showEnemyArcs || !SeesHull(picture, ship))) {
-                continue;
-            }
-            DrawArcs(m_graphics, m_registry, m_camera, ship);
-        }
-        DrawTarget(m_graphics, m_registry, m_camera, m_ship);
-
-        // The designated contact's ring. Beneath the hulls like the waypoint
-        // marker above, which it costs nothing to sit under: the ring clears the
-        // hull it encircles at any zoom, so only another ship can cover it.
-        DrawTargetMarker(m_graphics, m_registry, m_camera, m_ship);
-
-        // Hulls on top; the player's is drawn last so it stays the topmost. An
-        // enemy hull is drawn only while the player *sees* it (a merely ranged
-        // contact gets a blip from DrawContacts, not a hull); a wreck is exempt
-        // (it has shed the Combatant the picture is keyed on, and is the visible
-        // aftermath of a fight the player was in).
         for (auto ship : m_registry.view<Physics, Renderable>()) {
             if (ship == m_ship) {
                 continue;
@@ -296,27 +292,49 @@ namespace naval {
             DrawShip(m_graphics, m_registry, m_camera, ship);
         }
         DrawShip(m_graphics, m_registry, m_camera, m_ship);
+    }
 
-        // The player's sensor picture: passive ESM bearing lines (always), and the
-        // active radar's reach ring and contact blips while radiating.
+    void GameLayer::DrawRadarLayer() {
+        // The player's sensor picture over the map: passive ESM bearing lines
+        // (always), and the active radar's reach ring and contact blips while
+        // radiating.
         DrawContacts(m_graphics, m_registry, m_camera, m_ship);
+    }
+
+    void GameLayer::DrawTacticalLayer(ContactPicture const& picture) {
+        // The command picture, over the map and radar: each armed ship's firing
+        // arcs, the player's waypoint course and the designated contact's ring,
+        // then the shots in the air — projectiles and the point-defence tracer
+        // streams cutting down inbound missiles. An enemy's arcs are gated like its
+        // hull (nothing unless the player sees it — a ranged blip carries no known
+        // armament) and can be hidden even when seen via the debug toggle; the
+        // player's own always draw.
+        for (auto ship : m_registry.view<Physics, Armament>()) {
+            if (m_registry.get<Combatant>(ship).faction == Faction::Enemy &&
+                (!m_showEnemyArcs || !SeesHull(picture, ship))) {
+                continue;
+            }
+            DrawArcs(m_graphics, m_registry, m_camera, ship);
+        }
+        DrawTarget(m_graphics, m_registry, m_camera, m_ship);
+        DrawTargetMarker(m_graphics, m_registry, m_camera, m_ship);
 
         DrawProjectiles(m_graphics, m_registry, m_camera);
-
-        // Point-defence tracer streams, over the missiles they are cutting down.
         for (auto ship : m_registry.view<Physics, Armament>()) {
             DrawPointDefenseFire(m_graphics, m_registry, m_camera, ship);
         }
+    }
 
-        // Debug spread previews on top: a line to each enabled weapon's target
-        // and the disc its shots may land within.
+    void GameLayer::DrawDebugLayer() {
+        // On top of everything: the aggro-range rings around the AI ships, and the
+        // weapon-spread previews — a line to each enabled weapon's target and the
+        // disc its shots may land within.
+        for (auto ship : m_registry.view<Physics, Aggro>()) {
+            DrawAggroRing(m_graphics, m_registry, m_camera, ship);
+        }
         for (auto ship : m_registry.view<Physics, Armament>()) {
             DrawWeaponSpread(m_graphics, m_registry, m_camera, ship);
         }
-
-        DrawHelmPanel();
-        DrawTargetPanel();
-        DrawAggroDebug();
     }
 
     void GameLayer::DrawAggroDebug() {
@@ -334,6 +352,20 @@ namespace naval {
         ImGui::SliderFloat("Arc switch margin (rad)", &tuning.switchMarginRad, 0.0f, 1.5f, "%.2f");
         ImGui::Checkbox("Show aggro rings", &tuning.showRings);
         ImGui::Checkbox("Show enemy arcs", &m_showEnemyArcs);
+        ImGui::End();
+    }
+
+    void GameLayer::DrawLayersPanel() {
+        // Master switches over the four render layers Draw() composites. The label
+        // on each names what falls into it, so the toggle reads without having to
+        // recall the layer's contents. These only hide draws; the finer toggles
+        // (enemy arcs, aggro rings, per-weapon spread) still apply within a shown
+        // layer.
+        ImGui::Begin("Layers");
+        ImGui::Checkbox("Map (sea, terrain, hulls)", &m_showMapLayer);
+        ImGui::Checkbox("Radar (blips, ring, bearings)", &m_showRadarLayer);
+        ImGui::Checkbox("Tactical (arcs, tracks, shots)", &m_showTacticalLayer);
+        ImGui::Checkbox("Debug (aggro rings, spread)", &m_showDebugLayer);
         ImGui::End();
     }
 
