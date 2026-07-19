@@ -94,6 +94,33 @@ namespace naval {
         }
     }
 
+    entt::entity GameLayer::PickTmaFix(b2Vec2 world, float pickRadiusM) const {
+        auto const* picture = m_registry.try_get<ContactPicture>(m_ship);
+        auto const* trackFile = m_registry.try_get<TrackFile>(m_ship);
+        if (picture == nullptr || trackFile == nullptr) {
+            return entt::null;
+        }
+        // Nearest solved estimate the pick disc touches. Only a passive (bearing)
+        // contact carries a TMA fix; a positioned one is picked by its hull instead.
+        entt::entity best = entt::null;
+        float bestDist = pickRadiusM;
+        for (auto const& entry : picture->contacts) {
+            if (entry.second.level != DetectLevel::Bearing) {
+                continue;
+            }
+            auto const it = trackFile->tracks.find(entry.first);
+            if (it == trackFile->tracks.end() || !it->second.solved) {
+                continue;
+            }
+            float const dist = (it->second.position - world).Length();
+            if (dist < bestDist) {
+                best = entry.first;
+                bestDist = dist;
+            }
+        }
+        return best;
+    }
+
     bool GameLayer::OnEvent(moth_ui::Event const& event) {
         moth_ui::EventDispatch dispatch(event);
         dispatch.Dispatch(this, &GameLayer::OnMouseDown);
@@ -120,16 +147,25 @@ namespace naval {
         constexpr float kPickPx = 8.0f;
         entt::entity contact =
             ContactAt(m_registry, world, Faction::Enemy, kPickPx / m_camera.pixelsPerMeter);
-        // Designation needs a *fix*, not just an awareness: a contact the player
-        // holds only as a passive bearing (or does not hold at all) has no known
-        // position to lay guns on, so it cannot be engaged until radar or the eye
-        // gives it a range. A ranged or visual contact can.
+        // Designation needs a *fix*, not just an awareness. A positioned contact
+        // (radar or visual) is picked by its hull above, whose drawn position is its
+        // true one; gate it to the player's own picture and reject a bare bearing,
+        // which has no known position. Failing that, a passive contact the TMA
+        // solver has ranged can be designated by clicking its estimate marker — the
+        // true hull is elsewhere and unseen, so laying guns on it means laying on the
+        // solution.
         if (contact != entt::null) {
             auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
             auto const it = contacts.find(contact);
             if (it == contacts.end() || it->second.level == DetectLevel::Bearing) {
                 contact = entt::null;
             }
+        }
+        if (contact == entt::null) {
+            // A more generous disc for the estimate marker, which the player aims at
+            // as a ring rather than picking off a hull silhouette.
+            constexpr float kTmaPickPx = 24.0f;
+            contact = PickTmaFix(world, kTmaPickPx / m_camera.pixelsPerMeter);
         }
         if (contact != entt::null) {
             auto& order = m_registry.get<FireOrder>(m_ship);
@@ -575,6 +611,61 @@ namespace naval {
         ImGui::End();
     }
 
+    void GameLayer::DrawContactReadout(entt::entity target) {
+        // The designated contact as the ship knows it — class, range/bearing,
+        // speed/heading and health read from the ship's own belief (see KnownAim),
+        // not the hull's truth. A radar or visual fix reads true; a passive TMA fix
+        // reads its estimate, so the range shown is the one the guns will shoot at.
+        // Class, health, speed and heading resolve only once identified (or, for a
+        // passive fix, from the solution's own velocity, i.e. its course); a
+        // positioned but unidentified contact keeps them masked, and a designation
+        // whose solution has lapsed reads "no solution".
+        constexpr float kMetresPerSecToKnots = 1.94384f;
+        b2Body* self = m_registry.get<Physics>(m_ship).body;
+        b2Vec2 const shipPos = self->GetPosition();
+        float const shipAngle = self->GetAngle();
+
+        auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
+        auto const cit = contacts.find(target);
+        bool const identified = cit != contacts.end() && cit->second.identified;
+        AimBelief const belief = KnownAim(m_registry, m_ship, target);
+
+        char const* type = "Unknown";
+        if (identified) {
+            auto const* id = m_registry.try_get<Identity>(target);
+            type = id != nullptr ? id->name.c_str() : "contact";
+        }
+        ImGui::TextUnformatted(type);
+        ImGui::Separator();
+
+        if (!belief.ok) {
+            ImGui::TextUnformatted("no solution");
+        } else {
+            b2Vec2 const toContact = belief.pos - shipPos;
+            float const rangeM = toContact.Length();
+            float const bearingDeg =
+                Norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
+            if (identified || belief.estimate) {
+                float const speedKn = belief.vel.Length() * kMetresPerSecToKnots;
+                float const headingDeg =
+                    belief.estimate
+                        ? Norm360(std::atan2(belief.vel.y, belief.vel.x) * moth_ui::kRadToDeg)
+                        : Norm360(m_registry.get<Physics>(target).body->GetAngle() * moth_ui::kRadToDeg);
+                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
+                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
+            } else {
+                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd ---", rangeM).c_str());
+                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg ---", bearingDeg).c_str());
+            }
+        }
+
+        if (auto const* health = m_registry.try_get<Health>(target);
+            identified && health != nullptr && health->max > 0.0f) {
+            ImGui::ProgressBar(health->current / health->max, ImVec2(-1.0f, 0.0f),
+                               fmt::format("{:.0f} / {:.0f}", health->current, health->max).c_str());
+        }
+    }
+
     void GameLayer::DrawTargetPanel() {
         auto& order = m_registry.get<FireOrder>(m_ship);
 
@@ -587,50 +678,7 @@ namespace naval {
         // without a contact, so only this leading block is gated on there being
         // one.
         if (order.target != entt::null && m_registry.valid(order.target)) {
-            constexpr float kMetresPerSecToKnots = 1.94384f;
-            b2Body* self = m_registry.get<Physics>(m_ship).body;
-            b2Vec2 const shipPos = self->GetPosition();
-            float const shipAngle = self->GetAngle();
-
-            b2Body* contact = m_registry.get<Physics>(order.target).body;
-            b2Vec2 const toContact = contact->GetPosition() - shipPos;
-            float const rangeM = toContact.Length();
-            float const speedKn = contact->GetLinearVelocity().Length() * kMetresPerSecToKnots;
-            // Bearing is relative to our own bow, heading is the contact's own
-            // course — the two questions a gunnery picture has to answer.
-            float const bearingDeg =
-                Norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
-            float const headingDeg = Norm360(contact->GetAngle() * moth_ui::kRadToDeg);
-
-            // Read the class and kinematics from the ship's own picture, not the
-            // hull's truth: a contact resolves its class, speed and heading only
-            // once identified (see UpdateSensors), and reads as an Unknown with
-            // those masked until then. Range and bearing stand as soon as it is a
-            // designated (so positioned) contact.
-            auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
-            auto const cit = contacts.find(order.target);
-            bool const identified = cit != contacts.end() && cit->second.identified;
-
-            char const* type = "Unknown";
-            if (identified) {
-                auto const* id = m_registry.try_get<Identity>(order.target);
-                type = id != nullptr ? id->name.c_str() : "contact";
-            }
-            ImGui::TextUnformatted(type);
-            ImGui::Separator();
-            if (identified) {
-                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
-                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
-            } else {
-                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd ---", rangeM).c_str());
-                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg ---", bearingDeg).c_str());
-            }
-
-            if (auto const* health = m_registry.try_get<Health>(order.target);
-                health != nullptr && health->max > 0.0f) {
-                ImGui::ProgressBar(health->current / health->max, ImVec2(-1.0f, 0.0f),
-                                   fmt::format("{:.0f} / {:.0f}", health->current, health->max).c_str());
-            }
+            DrawContactReadout(order.target);
             ImGui::Separator();
 
             // How much of the battery can actually reach the contact right now.

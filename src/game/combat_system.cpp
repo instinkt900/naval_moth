@@ -332,6 +332,48 @@ namespace naval {
         }
     }
 
+    AimBelief KnownAim(entt::registry& registry, entt::entity shooter, entt::entity target) {
+        AimBelief belief;
+        auto const* picture = registry.try_get<ContactPicture>(shooter);
+        if (picture == nullptr) {
+            // Omniscient (the enemy carries no picture): the true hull.
+            b2Body* body = registry.get<Physics>(target).body;
+            belief.pos = body->GetPosition();
+            belief.vel = body->GetLinearVelocity();
+            belief.ok = true;
+            return belief;
+        }
+        auto const it = picture->contacts.find(target);
+        if (it == picture->contacts.end()) {
+            return belief; // not held at all
+        }
+        Contact const& contact = it->second;
+        if (contact.level == DetectLevel::Bearing) {
+            // Passive: only a solved TMA track gives a point to lay on.
+            if (auto const* trackFile = registry.try_get<TrackFile>(shooter); trackFile != nullptr) {
+                auto const tit = trackFile->tracks.find(target);
+                if (tit != trackFile->tracks.end() && tit->second.solved) {
+                    belief.pos = tit->second.position;
+                    belief.vel = tit->second.velocity;
+                    belief.estimate = true;
+                    belief.ok = true;
+                }
+            }
+            return belief;
+        }
+        // Positioned: tracked accurately while fresh, frozen at the last fix once
+        // stale (no current velocity to lead with).
+        if (contact.fixStaleness == 0.0f) {
+            b2Body* body = registry.get<Physics>(target).body;
+            belief.pos = body->GetPosition();
+            belief.vel = body->GetLinearVelocity();
+        } else {
+            belief.pos = contact.lastPos;
+        }
+        belief.ok = true;
+        return belief;
+    }
+
     entt::entity ContactAt(entt::registry& registry, b2Vec2 point, Faction faction, float pickRadiusM) {
         // Nearest by hull centre among those the pick disc touches, so two
         // overlapping contacts resolve to the one actually clicked on rather
@@ -428,6 +470,19 @@ namespace naval {
             if (!IsEngageable(registry, order.target, enemyFaction)) {
                 order.target = entt::null;
                 order.firing = false;
+            }
+
+            // Drop the designation once the ship has wholly lost the contact from
+            // its picture (out of all sensor reach). A momentary loss of the firing
+            // solution — still heard on a bearing — keeps the designation but the
+            // guns hold below, unable to aim until it re-solves. The enemy, with no
+            // picture, never loses a contact this way.
+            if (order.target != entt::null) {
+                if (auto const* picture = registry.try_get<ContactPicture>(shooter);
+                    picture != nullptr && picture->contacts.count(order.target) == 0) {
+                    order.target = entt::null;
+                    order.firing = false;
+                }
             }
 
             // Take the salvo latch for the whole ship before laying a gun, so
@@ -596,13 +651,27 @@ namespace naval {
                 // report exactly this, and it is what gives that contact its
                 // priority when laying the gun below.
                 entt::entity const designated = order.target;
+
+                // What this ship believes about its designated contact, from its own
+                // knowledge: the true hull for an omniscient shooter or a tracked
+                // fix, the TMA estimate for a passive one (see KnownAim). The guns
+                // bear and lay on that belief, so firing on a passive fix lands on
+                // the solution rather than the hull.
+                AimBelief const designatedBelief =
+                    designated != entt::null ? KnownAim(registry, shooter, designated) : AimBelief{};
+
                 bool bears = false;
-                if (designated != entt::null) {
-                    auto const& designatedHull = registry.get<Renderable>(designated);
-                    b2Body* designatedBody = registry.get<Physics>(designated).body;
-                    bears = SectorOverlapsHull(mountPos, arcCentre, weapon.range, weapon.arcHalfAngle,
-                                               designatedBody->GetPosition(), designatedBody->GetAngle(),
-                                               designatedHull.halfLengthM, designatedHull.halfBeamM);
+                if (designatedBelief.ok) {
+                    // A point estimate bears on the point; a tracked hull bears on
+                    // its full silhouette, as before.
+                    bears = designatedBelief.estimate
+                                ? PointInSector(designatedBelief.pos, mountPos, arcCentre, weapon.range,
+                                                weapon.arcHalfAngle)
+                                : SectorOverlapsHull(mountPos, arcCentre, weapon.range, weapon.arcHalfAngle,
+                                                     designatedBelief.pos,
+                                                     registry.get<Physics>(designated).body->GetAngle(),
+                                                     registry.get<Renderable>(designated).halfLengthM,
+                                                     registry.get<Renderable>(designated).halfBeamM);
                 }
                 weapon.hasTarget = bears;
 
@@ -614,29 +683,36 @@ namespace naval {
                 // then the designated contact is taken first, so releasing the
                 // guns never pulls one off the mark the ship chose.
                 entt::entity target = designated;
+                AimBelief belief = designatedBelief;
                 if (!bears) {
                     target = order.freeFire ? AcquireTarget(registry, enemyFaction, mountPos, arcCentre,
                                                             weapon.range, weapon.arcHalfAngle)
                                             : entt::null;
+                    // A free-fire-acquired mark is one the guns found down their own
+                    // arc, so it is laid on true; the knowledge gate is the
+                    // designated contact's alone.
+                    if (target != entt::null) {
+                        b2Body* const body = registry.get<Physics>(target).body;
+                        belief = AimBelief{ true, body->GetPosition(), body->GetLinearVelocity(), false };
+                    } else {
+                        belief = AimBelief{};
+                    }
                 }
                 weapon.target = target;
-                if (target == entt::null) {
-                    // Nothing to acquire; the barrel holds its lay (see below).
+                if (target == entt::null || !belief.ok) {
+                    // Nothing to acquire, or no firing solution held; the barrel
+                    // holds its lay (see below).
                     weapon.acquired = false;
                     continue;
                 }
-                b2Body* targetBody = registry.get<Physics>(target).body;
 
-                // Aim at the target's centre, led for its motion: aim where the
-                // hull will be when the shot lands (first-order intercept — time
-                // to the target at the projectile's speed, advanced by the
-                // target's velocity), so a hull can't just outrun a shot fired at
-                // its present position. Where the shot actually falls is the
-                // spread's business alone.
-                b2Vec2 const targetPos = targetBody->GetPosition();
-                b2Vec2 const targetVel = targetBody->GetLinearVelocity();
+                // Aim at the believed position, led for its motion: aim where the
+                // contact will be when the shot lands (first-order intercept — time
+                // to it at the projectile's speed, advanced by its velocity), so it
+                // can't just outrun a shot fired at its present position. Where the
+                // shot actually falls is the spread's business alone.
                 float const flightTime = weapon.muzzleVelocity > 0.0f
-                                             ? (targetPos - mountPos).Length() / weapon.muzzleVelocity
+                                             ? (belief.pos - mountPos).Length() / weapon.muzzleVelocity
                                              : 0.0f;
 
                 // The aim point and its spread disc, refreshed every tick a target
@@ -644,7 +720,7 @@ namespace naval {
                 // The spread angle is the opposite corner of a right triangle whose
                 // adjacent side is the distance to the aim point, so the disc's
                 // radius (= dist * tan(spread)) grows with range.
-                weapon.aimWorld = targetPos + (flightTime * targetVel);
+                weapon.aimWorld = belief.pos + (flightTime * belief.vel);
                 weapon.spreadRadiusM = (weapon.aimWorld - mountPos).Length() * std::tan(weapon.spread);
 
                 // Where the mount would point to lay onto the target, in

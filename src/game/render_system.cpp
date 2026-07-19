@@ -2,6 +2,7 @@
 
 #include "game/aggro_system.h"
 #include "game/camera.h"
+#include "game/combat_system.h"
 #include "game/components.h"
 #include "game/hull_shape.h"
 
@@ -128,18 +129,37 @@ namespace naval {
     }
 
     namespace {
-        // The viewer's passive picture: for each contact heard but not positioned,
-        // a bearing struck out from own ship along its direction — a direction with
-        // the range deliberately unknown — whose length reads the signal strength (a
-        // loud, near or big emitter reaches out toward passive range, a faint one is
-        // a short stub, which says "big or near" without telling the two apart, see
-        // Contact::strength). Where the TMA solver has ranged one instead (see
-        // tma_system), the line runs to the estimated position with an uncertainty
-        // ring that tightens as confidence firms and a course stalk for the
-        // estimated heading and speed — an estimate, so drawn softer than a ranged
-        // blip and never a solid diamond. Everything is built in world space from
-        // the stored bearing or estimate, never the hull's true position, so a bare
-        // bearing leaks no range.
+        // An estimated position: an uncertainty ring that tightens as confidence
+        // firms and a course stalk for the estimated heading and speed. A fixed
+        // screen size so it reads at any zoom, its alpha riding confidence so a
+        // fading track dims. `colour` tells a live fix (heard now) from a lost one
+        // being dead-reckoned on.
+        void DrawEstimate(moth_graphics::graphics::IGraphics& graphics, Camera const& camera,
+                          b2Vec2 pos, b2Vec2 vel, float confidence, moth_ui::Color colour) {
+            moth_ui::FloatVec2 const estPx = camera.WorldToScreen(pos);
+            constexpr float kUncMaxPx = 46.0f;
+            constexpr float kUncMinPx = 10.0f;
+            float const uncPx = kUncMaxPx + ((kUncMinPx - kUncMaxPx) * confidence);
+            graphics.SetColor(
+                moth_ui::Color{ colour.r, colour.g, colour.b, colour.a * (0.35f + (0.65f * confidence)) });
+            DrawCircle(graphics, estPx, uncPx);
+            constexpr float kCourseLeadS = 8.0f;
+            b2Vec2 const ahead{ pos.x + (vel.x * kCourseLeadS), pos.y + (vel.y * kCourseLeadS) };
+            graphics.DrawLineF(estPx, camera.WorldToScreen(ahead));
+        }
+
+        // The viewer's passive picture. For a live bearing contact heard but not
+        // positioned, a bearing struck out from own ship along its direction — a
+        // direction with the range deliberately unknown — whose length reads the
+        // signal strength (a loud, near or big emitter reaches toward passive range,
+        // a faint one is a short stub: "big or near" without telling the two apart,
+        // see Contact::strength). Where the TMA solver has ranged one, instead the
+        // amber line runs to the estimate with its uncertainty ring and course
+        // stalk. A track whose contact has since been lost is dead-reckoned on and
+        // fading (see UpdateTMA): it draws greyed and with no bearing line — memory,
+        // not a live cut. Everything is built in world space from the stored bearing
+        // or estimate, never the hull's true position, so a bare bearing leaks no
+        // range.
         void DrawPassiveBearings(moth_graphics::graphics::IGraphics& graphics, Camera const& camera,
                                  b2Vec2 selfPos, moth_ui::FloatVec2 selfPx, float passiveRangeM,
                                  ContactPicture const& picture, TrackFile const* trackFile) {
@@ -160,26 +180,10 @@ namespace naval {
                 }
 
                 if (track != nullptr) {
-                    moth_ui::FloatVec2 const estPx = camera.WorldToScreen(track->position);
                     graphics.SetColor(kBearingColor);
-                    graphics.DrawLineF(selfPx, estPx);
-
-                    // Uncertainty ring: wide while the solution is soft, tightening
-                    // toward a tick as confidence climbs, and brighter the surer the
-                    // fit. Fixed screen size so it reads at any zoom.
-                    constexpr float kUncMaxPx = 46.0f;
-                    constexpr float kUncMinPx = 10.0f;
-                    float const uncPx = kUncMaxPx + ((kUncMinPx - kUncMaxPx) * track->confidence);
-                    graphics.SetColor(moth_ui::Color{ kTmaFixColor.r, kTmaFixColor.g, kTmaFixColor.b,
-                                                      kTmaFixColor.a * (0.35f + (0.65f * track->confidence)) });
-                    DrawCircle(graphics, estPx, uncPx);
-
-                    // Course stalk: the estimated velocity struck out from the
-                    // estimate, a few seconds of run so a faster track reads longer.
-                    constexpr float kCourseLeadS = 8.0f;
-                    b2Vec2 const ahead{ track->position.x + (track->velocity.x * kCourseLeadS),
-                                        track->position.y + (track->velocity.y * kCourseLeadS) };
-                    graphics.DrawLineF(estPx, camera.WorldToScreen(ahead));
+                    graphics.DrawLineF(selfPx, camera.WorldToScreen(track->position));
+                    DrawEstimate(graphics, camera, track->position, track->velocity, track->confidence,
+                                 kTmaFixColor);
                     continue;
                 }
 
@@ -189,6 +193,25 @@ namespace naval {
                 b2Vec2 const end{ selfPos.x + (len * std::cos(contact.bearing)),
                                   selfPos.y + (len * std::sin(contact.bearing)) };
                 graphics.DrawLineF(selfPx, camera.WorldToScreen(end));
+            }
+
+            // Lost TMA tracks: a solved track whose contact is no longer a live
+            // bearing is held on, dead-reckoned and fading, as a decaying estimate.
+            // Greyed and with no bearing line, since there is no live cut to draw.
+            if (trackFile == nullptr) {
+                return;
+            }
+            for (auto const& entry : trackFile->tracks) {
+                TmaTrack const& track = entry.second;
+                if (!track.solved) {
+                    continue;
+                }
+                auto const pit = picture.contacts.find(entry.first);
+                if (pit != picture.contacts.end() && pit->second.level == DetectLevel::Bearing) {
+                    continue; // live, already drawn above
+                }
+                DrawEstimate(graphics, camera, track.position, track.velocity, track.confidence,
+                             kStaleContactColor);
             }
         }
     }
@@ -504,9 +527,13 @@ namespace naval {
         if (order == nullptr || order->target == entt::null || !registry.valid(order->target)) {
             return;
         }
-        auto const* renderable = registry.try_get<Renderable>(order->target);
-        auto const* physics = registry.try_get<Physics>(order->target);
-        if (renderable == nullptr || physics == nullptr) {
+
+        // Ring the designated contact where the ship *believes* it is — the true
+        // hull for a radar or visual fix, the estimate for a passive TMA fix (see
+        // KnownAim) — so the mark never betrays a position the player has not
+        // actually fixed. Nothing to ring if the firing solution has lapsed.
+        AimBelief const belief = KnownAim(registry, ship, order->target);
+        if (!belief.ok) {
             return;
         }
 
@@ -522,17 +549,23 @@ namespace naval {
             }
         }
 
-        // A circle that clears the hull whatever way it is pointing: the hull's
+        // A known hull takes a circle clearing it whatever way it points: its
         // circumscribed radius (bow corner to centre), padded so the ring doesn't
-        // graze it. Floored in pixels so a contact zoomed down to a speck still
-        // carries a mark big enough to find — at survey zoom the mark is the only
-        // way to see which speck you are fighting.
+        // graze it and floored in pixels so a speck at survey zoom still carries a
+        // findable mark. A passive estimate has no known size, so it takes a fixed
+        // screen ring on the estimate point instead.
         constexpr float kPadFrac = 1.35f;
         constexpr float kMinRadiusPx = 14.0f;
-        float const hullRadiusM = std::sqrt((renderable->halfLengthM * renderable->halfLengthM) +
-                                            (renderable->halfBeamM * renderable->halfBeamM));
-        float const radiusPx = std::max(camera.MToPx(hullRadiusM * kPadFrac), kMinRadiusPx);
-        moth_ui::FloatVec2 const centrePx = camera.WorldToScreen(physics->body->GetPosition());
+        constexpr float kEstimateRadiusPx = 18.0f;
+        float radiusPx = kEstimateRadiusPx;
+        if (!belief.estimate) {
+            if (auto const* renderable = registry.try_get<Renderable>(order->target); renderable != nullptr) {
+                float const hullRadiusM = std::sqrt((renderable->halfLengthM * renderable->halfLengthM) +
+                                                    (renderable->halfBeamM * renderable->halfBeamM));
+                radiusPx = std::max(camera.MToPx(hullRadiusM * kPadFrac), kMinRadiusPx);
+            }
+        }
+        moth_ui::FloatVec2 const centrePx = camera.WorldToScreen(belief.pos);
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);

@@ -34,6 +34,22 @@ namespace naval {
     // and only the camera knows the scale. Ties go to the nearest hull centre.
     entt::entity ContactAt(entt::registry& registry, b2Vec2 point, Faction faction, float pickRadiusM);
 
+    // Where `shooter` believes `target` is, from its own knowledge — what the guns
+    // lay on, and what the Target readout reports, rather than the hull's truth. A
+    // ship with no picture is omniscient (the true hull); a ship with one lays on
+    // what it holds: a radar or visual fix is the true hull (tracked accurately), a
+    // passive contact only its TMA estimate (so a shot on a soft solution misses), a
+    // stale fix its frozen last-known position, and a bare bearing or unheld contact
+    // no aim at all (ok false). `estimate` marks a point solution — bear and lay on
+    // the point rather than a known silhouette.
+    struct AimBelief {
+        bool ok = false;
+        b2Vec2 pos{ 0.0f, 0.0f };
+        b2Vec2 vel{ 0.0f, 0.0f };
+        bool estimate = false;
+    };
+    AimBelief KnownAim(entt::registry& registry, entt::entity shooter, entt::entity target);
+
     // Advances projectiles (ballistic shells and guided munitions) and destroys
     // those that have run their course. A shot that expires without striking a
     // hull leaves a splash where it fell — except a waterborne munition (a

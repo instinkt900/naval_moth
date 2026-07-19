@@ -43,6 +43,13 @@ namespace naval {
         // Scatter enemies across open water in a ring around the player start.
         void SpawnEnemies();
 
+        // The enemy whose solved TMA estimate lies within pickRadiusM of `world`,
+        // or null. Designation clicks fall through to this when no seen or radar-
+        // fixed hull is under the cursor, so the player can lay guns on a passive
+        // fix by clicking its estimate marker — the true hull being elsewhere and
+        // unseen (see OnMouseDown).
+        entt::entity PickTmaFix(b2Vec2 world, float pickRadiusM) const;
+
         // The frame's four render layers, composited bottom to top by Draw() and
         // each toggleable from the Layers panel. Map is the sea and the hulls on
         // it; radar overlays the sensor picture; tactical draws the command picture
@@ -63,6 +70,14 @@ namespace naval {
         // bears, and the ship's fire orders — Fire/Hold, Salvo, weapons
         // release), and the per-gun battery list sits beneath.
         void DrawTargetPanel();
+
+        // The read-only picture of the designated contact at the head of the
+        // Target window — class, range, bearing, speed, heading and health, read
+        // from the ship's own belief of the contact (see KnownAim) rather than the
+        // hull's truth, so a passive TMA fix reads its estimate and a masked
+        // Unknown stays masked. Split from the order controls beneath it, which
+        // mutate the FireOrder.
+        void DrawContactReadout(entt::entity target);
 
         // The weapons-release control at the foot of the Target window. Split
         // out because it is the one order that stands without a designated
