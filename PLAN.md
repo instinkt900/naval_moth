@@ -548,6 +548,25 @@ has to get past the shore's own defences — is a mission type as much as a feat
 - **Later:** multiple AI ships positioned around the map.
 - **Later:** networked player-controlled ships fighting alongside or against AI.
 
+### Enemy behaviour profiles
+
+Every AI ship today runs the same single behaviour: patrol until a foe comes within
+reach, then close and fight. That is enough for a duel and even a brawl, but a fleet
+that is to fight *as a fleet* needs ships that play different **roles** — offensive
+hulls that press the attack, defensive ones that hold back and screen, support ships
+that cover others' point defence or lend their sensors rather than their guns, a
+picket that scouts and reports without committing. Spawn a mix of these and an enemy
+force reads as a coordinated formation with intent rather than a swarm of identical
+aggressors — the enemy-side mirror of the cooperation *Fleet command* gives the
+player, and what makes a simulated fleet action a fight against a *plan* instead of
+against N copies of one ship.
+
+The behaviour is a property authored per enemy, alongside the hull it rides on (the
+content already separates an enemy id from its hull, so a role is a natural thing to
+hang there), so a scenario composes a fleet's character the way a hull composes a
+ship's. No implementation is sketched here — this only records the need, which
+serious fleet combat makes unavoidable.
+
 ## Stretch
 
 - Submarines as a ship class (dive/surface state).
