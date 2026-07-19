@@ -226,16 +226,25 @@ namespace naval {
         graphics.DrawLineF(selfPx, { selfPx.x + (kOwnStalkPx * std::cos(heading)),
                                      selfPx.y + (kOwnStalkPx * std::sin(heading)) });
 
-        // Every positioned mark is a fixed screen-size open diamond, drawn at the
-        // contact's last-known position — not scaled to the hull (a return is a
-        // position, not a size) and kept distinct from the target ring (a circle)
-        // and the waypoint marker (a boxed dot).
+        // Every positioned mark is a fixed screen-size diamond at the contact's
+        // last-known position — not scaled to the hull (a return is a position, not
+        // a size) and kept distinct from the target ring (a circle) and the waypoint
+        // marker (a boxed dot). Filled once the contact is identified, an open
+        // outline until then, so a classified track reads apart from a bare return.
         constexpr float kBlipPx = 8.0f;
-        auto drawDiamond = [&](moth_ui::FloatVec2 p) {
-            graphics.DrawLineF({ p.x, p.y - kBlipPx }, { p.x + kBlipPx, p.y });
-            graphics.DrawLineF({ p.x + kBlipPx, p.y }, { p.x, p.y + kBlipPx });
-            graphics.DrawLineF({ p.x, p.y + kBlipPx }, { p.x - kBlipPx, p.y });
-            graphics.DrawLineF({ p.x - kBlipPx, p.y }, { p.x, p.y - kBlipPx });
+        auto drawDiamond = [&](moth_ui::FloatVec2 p, bool filled) {
+            std::array<moth_ui::FloatVec2, 4> const pts{ { { p.x, p.y - kBlipPx },
+                                                           { p.x + kBlipPx, p.y },
+                                                           { p.x, p.y + kBlipPx },
+                                                           { p.x - kBlipPx, p.y } } };
+            if (filled) {
+                graphics.DrawFillPolygonF(pts.data(), pts.size());
+                return;
+            }
+            graphics.DrawLineF(pts[0], pts[1]);
+            graphics.DrawLineF(pts[1], pts[2]);
+            graphics.DrawLineF(pts[2], pts[3]);
+            graphics.DrawLineF(pts[3], pts[0]);
         };
 
         // Active radar, only while radiating: its reach ring, and a live blip over
@@ -254,7 +263,7 @@ namespace naval {
                 if (!contact.hasPos || contact.fixStaleness != 0.0f) {
                     continue;
                 }
-                drawDiamond(camera.WorldToScreen(contact.lastPos));
+                drawDiamond(camera.WorldToScreen(contact.lastPos), contact.identified);
             }
         }
 
@@ -276,7 +285,7 @@ namespace naval {
             float const life = std::clamp(1.0f - (contact.fixStaleness / kContactDecayS), 0.0f, 1.0f);
             graphics.SetColor(moth_ui::Color{ kStaleContactColor.r, kStaleContactColor.g,
                                               kStaleContactColor.b, kStaleContactColor.a * life });
-            drawDiamond(camera.WorldToScreen(contact.lastPos));
+            drawDiamond(camera.WorldToScreen(contact.lastPos), contact.identified);
         }
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }

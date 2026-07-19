@@ -387,8 +387,11 @@ namespace naval {
 
     // The rungs of the detection ladder (PLAN's *Sensors & the tactical view*),
     // ordered from least to most certain. A ship's knowledge of a contact climbs
-    // these as its sensors resolve it. Only Visual is produced today; the passive
-    // and active rungs arrive with the radar steps that earn them.
+    // these as its sensors resolve it: heard on a bearing, fixed by active radar,
+    // that fix held long enough (or seen close enough) to classify, then seen
+    // outright. The Identified rung is a Ranged fix whose class has resolved (see
+    // Contact::identified); Visual is above it, since seeing the hull is the whole
+    // truth at once.
     enum class DetectLevel {
         Bearing,    // passive: a bearing out from own ship, no range or identity
         Ranged,     // active: bearing + range, a fixed position, still unidentified
@@ -457,6 +460,18 @@ namespace naval {
         // fresh. Governs the radar blip and its fade, where staleness governs
         // retention.
         float fixStaleness = 0.0f;
+
+        // Class-classification state. `identified` is sticky once earned — held
+        // long enough or seen close enough, the contact's class, heading and speed
+        // become known and stay known for as long as the track lives, so a brief
+        // downgrade to a bearing does not un-learn what it is. `dwell` is the
+        // seconds of positional hold accumulated toward that, counting only the
+        // ticks the contact is actually fixed (Ranged or Visual) — a bearing gives
+        // no position and does not advance it. Until identified the Target window
+        // reads the contact as Unknown with its speed and heading masked, and the
+        // plot marks it with an open rather than a filled blip.
+        float dwell = 0.0f;
+        bool identified = false;
     };
 
     // A ship's own picture of the sea: every contact it holds and how well it

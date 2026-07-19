@@ -10,6 +10,12 @@
 
 namespace naval {
     namespace {
+        // How a positional fix is classified into a known contact: held under a
+        // steady fix for long enough, or seen close enough that even a first look
+        // resolves the class.
+        constexpr float kIdentifyDwellS = 8.0f;       // s of positional hold to classify a contact
+        constexpr float kIdentifyRangeFactor = 1.25f; // ...or at once within this multiple of visual range
+
         // Classify one opposing hull `other` against the observer's senses and
         // refresh its contact at the best rung it reaches this tick, resetting its
         // staleness to zero. Leaves the picture untouched when the hull is beyond
@@ -17,9 +23,10 @@ namespace naval {
         // held. `otherSensors` is the hull's own Sensors (or null), needed only for
         // the passive rung, which depends on the *other* ship radiating.
         void RefreshContact(ContactPicture& picture, entt::entity other, b2Vec2 otherPos,
-                            b2Vec2 delta, float d, Sensors const& sensors, Sensors const* otherSensors) {
-            // Seen outright inside visual range: the real hull, a fixed position.
-            // A positional fix, so both clocks reset.
+                            b2Vec2 delta, float d, float dt, Sensors const& sensors,
+                            Sensors const* otherSensors) {
+            // Seen outright inside visual range: the real hull, a fixed position and
+            // an immediate identification. A positional fix, so both clocks reset.
             if (d <= sensors.visualRangeM) {
                 Contact& c = picture.contacts[other];
                 c.level = DetectLevel::Visual;
@@ -27,16 +34,25 @@ namespace naval {
                 c.hasPos = true;
                 c.staleness = 0.0f;
                 c.fixStaleness = 0.0f;
+                c.dwell += dt;
+                c.identified = true;
                 return;
             }
-            // A ranged blip if the active radar is up and reaches it. Also a fix.
+            // A ranged blip if the active radar is up and reaches it. Also a fix,
+            // which accrues dwell toward classifying the contact — held long enough
+            // under the fix, or close enough, and its class resolves (sticky once
+            // set). Until then the fix stays an unidentified Ranged one.
             if (sensors.activeOn && d <= sensors.activeRangeM) {
                 Contact& c = picture.contacts[other];
-                c.level = DetectLevel::Ranged;
                 c.lastPos = otherPos;
                 c.hasPos = true;
                 c.staleness = 0.0f;
                 c.fixStaleness = 0.0f;
+                c.dwell += dt;
+                if (c.dwell >= kIdentifyDwellS || d <= sensors.visualRangeM * kIdentifyRangeFactor) {
+                    c.identified = true;
+                }
+                c.level = c.identified ? DetectLevel::Identified : DetectLevel::Ranged;
                 return;
             }
             // Else a passive bearing, if the contact is itself radiating and within
@@ -101,7 +117,7 @@ namespace naval {
                 }
                 b2Vec2 const otherPos = registry.get<Physics>(other).body->GetPosition();
                 b2Vec2 const delta = otherPos - selfPos;
-                RefreshContact(picture, other, otherPos, delta, delta.Length(), sensors,
+                RefreshContact(picture, other, otherPos, delta, delta.Length(), dt, sensors,
                                registry.try_get<Sensors>(other));
             }
 

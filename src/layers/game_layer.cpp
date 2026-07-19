@@ -602,14 +602,29 @@ namespace naval {
                 Norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
             float const headingDeg = Norm360(contact->GetAngle() * moth_ui::kRadToDeg);
 
-            char const* type = "contact";
-            if (auto const* id = m_registry.try_get<Identity>(order.target); id != nullptr) {
-                type = id->name.c_str();
+            // Read the class and kinematics from the ship's own picture, not the
+            // hull's truth: a contact resolves its class, speed and heading only
+            // once identified (see UpdateSensors), and reads as an Unknown with
+            // those masked until then. Range and bearing stand as soon as it is a
+            // designated (so positioned) contact.
+            auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
+            auto const cit = contacts.find(order.target);
+            bool const identified = cit != contacts.end() && cit->second.identified;
+
+            char const* type = "Unknown";
+            if (identified) {
+                auto const* id = m_registry.try_get<Identity>(order.target);
+                type = id != nullptr ? id->name.c_str() : "contact";
             }
             ImGui::TextUnformatted(type);
             ImGui::Separator();
-            ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
-            ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
+            if (identified) {
+                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
+                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
+            } else {
+                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd ---", rangeM).c_str());
+                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg ---", bearingDeg).c_str());
+            }
 
             if (auto const* health = m_registry.try_get<Health>(order.target);
                 health != nullptr && health->max > 0.0f) {
