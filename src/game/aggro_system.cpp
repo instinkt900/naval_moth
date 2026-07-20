@@ -93,7 +93,7 @@ namespace naval {
     void UpdateAggro(entt::registry& registry, float /*dt*/) {
         AggroTuning const& tuning = AggroTuningRef();
 
-        auto view = registry.view<Physics, Combatant, Armament, Aggro, FireOrder, Helm, MoveTarget, ContactPicture>();
+        auto view = registry.view<Physics, Combatant, Armament, Aggro, FireControl, Helm, MoveTarget, ContactPicture>();
         for (auto entity : view) {
             auto& aggro = view.get<Aggro>(entity);
 
@@ -135,10 +135,12 @@ namespace naval {
             // open fire the way the player has one. Issued here — where the
             // decision to engage is actually made — so both sides' guns run off
             // the same order, and the weapons system alone works out which
-            // batteries bear and when the order is spent.
-            auto& order = view.get<FireOrder>(entity);
-            order.target = aggro.target;
-            order.firing = aggro.target != entt::null;
+            // batteries bear and when the order is spent. An enemy fights on its
+            // single group (channel 0, always present from spawn); it never splits
+            // its battery, so the whole fire picture is that one channel.
+            auto& channel = view.get<FireControl>(entity).channels.front();
+            channel.target = aggro.target;
+            channel.firing = aggro.target != entt::null;
 
             auto const& armament = view.get<Armament>(entity);
             if (aggro.target == entt::null || armament.weapons.empty()) {

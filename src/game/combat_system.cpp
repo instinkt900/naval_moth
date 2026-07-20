@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <random>
+#include <unordered_map>
 #include <vector>
 
 namespace naval {
@@ -290,6 +291,22 @@ namespace naval {
             return AcquireMunition(registry, defend, origin, arcCentre, range, arcHalfAngle, claimed);
         }
 
+        // The fire-control channel a mount belongs to, or nullptr if it is held (in
+        // no group) or its channel id no longer names a live group. The Target
+        // window keeps a mount's channel pointing only at a live group, so a valid
+        // channel >= 0 normally resolves; the null return is the defensive case.
+        FireChannel* FindChannel(FireControl& fc, int channelId) {
+            if (channelId < 0) {
+                return nullptr;
+            }
+            for (auto& channel : fc.channels) {
+                if (channel.id == channelId) {
+                    return &channel;
+                }
+            }
+            return nullptr;
+        }
+
         // True if `target` is something `enemyFaction`'s guns may still shoot at:
         // a live hull of that faction that is still in the registry. A destroyed
         // hull loses its Combatant as it begins sinking, so this goes false the
@@ -432,7 +449,7 @@ namespace naval {
         // acquires the genuinely unclaimed. The set of mounts walked here mirrors the
         // main pass exactly (same view, same enabled gate), so nothing is reserved
         // that the main pass would not have processed.
-        for (auto shooter : registry.view<Physics, Armament, FireOrder, Combatant>()) {
+        for (auto shooter : registry.view<Physics, Armament, FireControl, Combatant>()) {
             Faction const ownFaction = registry.get<Combatant>(shooter).faction;
             b2Body* body = registry.get<Physics>(shooter).body;
             float const shipAngle = body->GetAngle();
@@ -456,40 +473,43 @@ namespace naval {
             }
         }
 
-        auto shooters = registry.view<Physics, Armament, FireOrder>();
+        auto shooters = registry.view<Physics, Armament, FireControl>();
 
         for (auto shooter : shooters) {
             Faction const ownFaction = registry.get<Combatant>(shooter).faction;
             Faction const enemyFaction = Opposing(ownFaction);
-            auto& order = shooters.get<FireOrder>(shooter);
+            auto& fireControl = shooters.get<FireControl>(shooter);
 
-            // The order outlives nothing: once the contact is dead or gone the
-            // whole order goes with it, guns included. Done here rather than
-            // where a hull dies so there is one place that decides an order is
-            // over, however the target left — sunk, or removed outright.
-            if (!IsEngageable(registry, order.target, enemyFaction)) {
-                order.target = entt::null;
-                order.firing = false;
-            }
-
-            // Drop the designation once the ship has wholly lost the contact from
-            // its picture (out of all sensor reach). A momentary loss of the firing
-            // solution — still heard on a bearing — keeps the designation but the
-            // guns hold below, unable to aim until it re-solves. The enemy, with no
-            // picture, never loses a contact this way.
-            if (order.target != entt::null) {
-                if (auto const* picture = registry.try_get<ContactPicture>(shooter);
-                    picture != nullptr && picture->contacts.count(order.target) == 0) {
-                    order.target = entt::null;
-                    order.firing = false;
+            // Clean each group's order and take its salvo latch, before a single
+            // gun is laid. Two things happen per channel:
+            //
+            // A channel's order outlives nothing: once its contact is dead or gone
+            // the channel drops it, guns included. Done here rather than where a
+            // hull dies so there is one place that decides an order is over, however
+            // the target left — sunk, or removed outright. A momentary loss of the
+            // firing solution — still heard on a bearing — keeps the designation but
+            // the guns hold below, unable to aim until it re-solves; only wholly
+            // losing the contact from the picture (out of all sensor reach) drops
+            // it. The enemy, with no picture, never loses a contact that second way.
+            //
+            // And the salvo latch is taken per channel here, not per weapon, so one
+            // press is one round from each gun on the group — clearing it as a gun
+            // fired would let the first gun swallow the order for the rest.
+            auto const* picture = registry.try_get<ContactPicture>(shooter);
+            std::unordered_map<int, bool> salvoLatched;
+            for (auto& channel : fireControl.channels) {
+                if (!IsEngageable(registry, channel.target, enemyFaction)) {
+                    channel.target = entt::null;
+                    channel.firing = false;
                 }
+                if (channel.target != entt::null && picture != nullptr &&
+                    picture->contacts.count(channel.target) == 0) {
+                    channel.target = entt::null;
+                    channel.firing = false;
+                }
+                salvoLatched[channel.id] = channel.salvo;
+                channel.salvo = false;
             }
-
-            // Take the salvo latch for the whole ship before laying a gun, so
-            // one press is one round from each — clearing it per weapon would
-            // let the first gun swallow the order for the rest of the battery.
-            bool const salvo = order.salvo;
-            order.salvo = false;
 
             b2Body* body = shooters.get<Physics>(shooter).body;
             float const shipAngle = body->GetAngle();
@@ -646,11 +666,18 @@ namespace naval {
                 // both originate here.
                 b2Vec2 const mountPos = body->GetWorldPoint(weapon.mountOffset);
 
-                // Whether the designated contact bears gets asked whatever the
-                // orders are: the target ring and the "guns bear" count both
+                // The fire-control group this mount belongs to, or null if it is
+                // held (in no group). A held mount tracks nothing and fires nothing;
+                // it still runs the training below so it holds a sensible lay, then
+                // the fire gates drop it. All the order fields — the designated
+                // contact, firing, free fire, salvo — are read off this group.
+                FireChannel const* channel = FindChannel(fireControl, weapon.channel);
+
+                // Whether the group's designated contact bears gets asked whatever
+                // the orders are: the target ring and the "guns bear" count both
                 // report exactly this, and it is what gives that contact its
                 // priority when laying the gun below.
-                entt::entity const designated = order.target;
+                entt::entity const designated = channel != nullptr ? channel->target : entt::null;
 
                 // What this ship believes about its designated contact, from its own
                 // knowledge: the true hull for an omniscient shooter or a tracked
@@ -676,18 +703,19 @@ namespace naval {
                 weapon.hasTarget = bears;
 
                 // Lay the gun. With the guns tight the weapon makes no choice of
-                // its own: it only asks whether the ship's designated contact is
+                // its own: it only asks whether its group's designated contact is
                 // inside its arc and range. So a gun that cannot bear holds, and
                 // one the target drifts into picks it up on that tick without
                 // being told again. Free fire is the one exception — and even
-                // then the designated contact is taken first, so releasing the
-                // guns never pulls one off the mark the ship chose.
+                // then the group's designated contact is taken first, so releasing
+                // the guns never pulls one off the mark the group chose.
+                bool const freeFire = channel != nullptr && channel->freeFire;
                 entt::entity target = designated;
                 AimBelief belief = designatedBelief;
                 if (!bears) {
-                    target = order.freeFire ? AcquireTarget(registry, enemyFaction, mountPos, arcCentre,
-                                                            weapon.range, weapon.arcHalfAngle)
-                                            : entt::null;
+                    target = freeFire ? AcquireTarget(registry, enemyFaction, mountPos, arcCentre,
+                                                      weapon.range, weapon.arcHalfAngle)
+                                      : entt::null;
                     // A free-fire-acquired mark is one the guns found down their own
                     // arc, so it is laid on true; the knowledge gate is the
                     // designated contact's alone.
@@ -749,44 +777,52 @@ namespace naval {
                     weapon.acquired = TrainBarrel(weapon, aimWorldBearing, arcCentre, dt);
                 }
 
-                // Everything above happens whether or not the ship is shooting,
+                // Everything above happens whether or not the group is shooting,
                 // so a held gun still tracks its mark and shows a live aim
                 // solution. Only the shot itself waits on the order.
                 //
-                // A gun switched out of the battery holds regardless of the
-                // order — the enable tick is each gun's own veto, checked ahead
-                // of the ship's orders below, and it tracks either way.
-                if (!weapon.enabled) {
+                // A gun in no group holds regardless: its group assignment is each
+                // gun's own veto, checked ahead of the orders below, and it tracks
+                // either way. From here on the group is known to exist, so its
+                // orders — firing, free fire, and its latched salvo — drive the
+                // trigger.
+                if (channel == nullptr) {
                     continue;
                 }
+                bool const salvo = salvoLatched[channel->id];
                 if (weapon.kind == WeaponKind::Gun) {
-                    // The trigger. Standing fire — the fire order or weapons-free —
-                    // holds until the barrel has trained onto the mark, so a slewing
-                    // gun keeps its rounds rather than throwing them wide of a lead
-                    // it has not reached. A salvo is exempt: it is the deliberate
-                    // "fire now", and spends its one round whether or not the gun has
-                    // settled. What the gun is laid on, and how far it has trained,
-                    // were both settled above; this only decides whether to shoot.
-                    bool const standingFire = (order.firing || order.freeFire) && weapon.acquired;
-                    if (!salvo && !standingFire) {
+                    // The trigger. A salvo queues the unit's selected round count,
+                    // which then ripples out one shot per cooldown (drained below)
+                    // whether or not the barrel has settled — a salvo is the
+                    // deliberate "fire now". Standing fire — the unit's fire order or
+                    // its weapons-free — instead holds until the barrel has trained
+                    // onto the mark, so a slewing gun keeps its rounds rather than
+                    // throwing them wide of a lead it has not reached. What the gun is
+                    // laid on, and how far it has trained, were both settled above;
+                    // this only decides whether to shoot.
+                    if (salvo) {
+                        weapon.pending = channel->salvoSize;
+                    }
+                    bool const standingFire = (channel->firing || freeFire) && weapon.acquired;
+                    if (weapon.pending <= 0 && !standingFire) {
                         continue;
                     }
                     if (weapon.cooldownRemaining > 0.0f) {
                         continue;
                     }
                 } else {
-                    // A launcher triggers in whole tubes. A ship-wide salvo queues
-                    // this launcher's selected count (never more than are ready);
-                    // standing fire ripples tubes out as fast as the interval lets
-                    // it. Either way a launch needs a ready tube and the interval
-                    // since the last one elapsed — that spacing is what makes a
-                    // six-tube salvo six shots in quick succession rather than one
-                    // impossible instant. A launched munition homes, so unlike a gun
-                    // the launcher does not wait on the mount being 'acquired'.
+                    // A launcher triggers in whole tubes. The unit's salvo queues its
+                    // selected count (never more than are ready); standing fire
+                    // ripples tubes out as fast as the interval lets it. Either way a
+                    // launch needs a ready tube and the interval since the last one
+                    // elapsed — that spacing is what makes a six-tube salvo six shots
+                    // in quick succession rather than one impossible instant. A
+                    // launched munition homes, so unlike a gun the launcher does not
+                    // wait on the mount being 'acquired'.
                     if (salvo) {
-                        weapon.pending = std::min(weapon.salvoSize, weapon.readyTubes);
+                        weapon.pending = std::min(channel->salvoSize, weapon.readyTubes);
                     }
-                    bool const standingFire = order.firing || order.freeFire;
+                    bool const standingFire = channel->firing || freeFire;
                     if (weapon.pending <= 0 && !standingFire) {
                         continue;
                     }
@@ -893,6 +929,11 @@ namespace naval {
 
                 if (weapon.kind == WeaponKind::Gun) {
                     weapon.cooldownRemaining = weapon.cooldown;
+                    // Drain one from the salvo queue, if this shot came from one, so
+                    // the gun ripples the ordered rounds out over its cooldown.
+                    if (weapon.pending > 0) {
+                        --weapon.pending;
+                    }
                 } else {
                     // Spend a tube: hold the next launch off by the interval, and
                     // start it reloading behind any reload already in progress so

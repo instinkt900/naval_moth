@@ -33,10 +33,11 @@ namespace naval {
     // it is steering, as opposed to what it is shooting at (see DrawTargetMarker).
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
-    // A ring around the contact `ship` has designated (its FireOrder target):
-    // green while no gun bears on it, red once one does — so whether the target
-    // can be engaged from here is readable without the Target window. Draws
-    // nothing when no contact is designated.
+    // A ring around each distinct contact `ship`'s fire units have designated:
+    // green while no gun bears on it, red once one does — so whether a designated
+    // contact can be engaged from here is readable without the Target window. One
+    // ring per contact however many units point at it. Draws nothing for a ship
+    // with no unit designating anything.
     void DrawTargetMarker(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
     // The viewer's own sensor picture over the sea. Passive ESM bearings — a line

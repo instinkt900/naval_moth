@@ -197,11 +197,11 @@ namespace naval {
         float reloadTime = 0.0f;     // s to reload one spent tube
         float reloadTimer = 0.0f;    // s left on the tube reloading now; 0 = none in progress
 
-        // The player-set salvo size for this launcher and the launches still
-        // queued from the last salvo. salvoSize is how many a Salvo order
-        // releases (capped at the ready tubes when it fires); pending drains one
-        // per launch as the tubes ripple out. Launcher only.
-        int salvoSize = 1;
+        // Rounds still queued from the last salvo, drained one per shot as the
+        // weapon ripples them out: for a gun, shots spaced by its cooldown; for a
+        // launcher, tubes spaced by launchInterval. Loaded from the unit's
+        // FireChannel::salvoSize when a Salvo is ordered (a launcher capping it at
+        // its ready tubes).
         int pending = 0;
 
         // What the gun itself does as it fires, felt and heard at the mount.
@@ -220,28 +220,34 @@ namespace naval {
         float cooldownRemaining = 0.0f; // s until it can fire again
         bool hasTarget = false;         // the ship's designated contact bears this tick
 
-        // Whether this gun answers the ship's fire orders at all. Switched out
-        // in the Target window it stays part of the battery on paper but holds
-        // fire through Fire, Salvo and free fire alike — it still tracks the
-        // contact and shows a live aim solution, it simply never pulls the
-        // trigger. This is a gun's one say in the engagement: the order reaches
-        // the whole ship, and each gun answers only whether it is switched in.
-        // The player's mounts are set switched out at spawn (see ship_factory),
-        // so opening fire is a deliberate act of ticking the wanted weapons in;
-        // an enemy battery, which nothing toggles, is spawned enabled and fights
-        // in full. The struct default stays on so a weapon built by any other
-        // path is armed unless a spawn decides otherwise.
+        // The fire-control channel (fire unit) this battery mount belongs to: the
+        // id of a FireChannel on the ship's FireControl. Every battery mount is
+        // always on one — its own lone channel, or a group it shares — so the mount
+        // always has an order to answer, and firing is just that channel's `firing`
+        // (nothing fires until the player commits a unit). Moving a mount between
+        // units (its own → a group, or back) only rewrites this id; the Target
+        // window keeps it pointing at a live channel. -1 means "on no channel",
+        // which a point-defence mount carries (it ignores this and answers to
+        // `enabled` below), and which a battery mount never rests at.
+        int channel = -1;
+
+        // Whether a *point-defence* mount is switched on. A point-defence control
+        // only now: a CIWS stands outside the group model (it answers inbound
+        // missiles on its own), so the enable tick is its whole say. A battery
+        // mount ignores this — its participation is `channel` above. Point defence
+        // spawns enabled (a hands-off shield), which is why the default stays on.
         bool enabled = true;
 
-        // Player-facing draw toggle. The firing arc has no toggle of its own — it
-        // draws whenever the weapon is enabled (see render_system), so the enable
-        // tick doubles as the arc's switch.
+        // Player-facing spread-preview toggle, a per-mount debug draw. The firing
+        // arc is a separate toggle and lives on the fire unit, not the mount
+        // (FireChannel::showArc), so a whole group's arcs switch together; a
+        // point-defence arc instead draws whenever the mount is enabled.
         bool showSpread = false; // draw a debug preview of the spread disc over the current target
 
         // The contact this weapon is laid on, or entt::null if it can reach
-        // none — normally the ship's designated contact, and under free fire
+        // none — normally its group's designated contact, and under free fire
         // whatever else the gun found when that contact was out of its arc (see
-        // FireOrder). A point-defence mount instead lays this on the inbound
+        // FireChannel). A point-defence mount instead lays this on the inbound
         // munition entity it is engaging, which is why the field is a bare entity
         // and not assumed to carry a hull's components — read it only after
         // registry.valid. Distinct from hasTarget above, which stays a strict answer
@@ -284,53 +290,82 @@ namespace naval {
         std::vector<Weapon> weapons;
     };
 
-    // A ship's engagement order: the one contact it is fighting, and whether it
-    // is actually shooting at it. Designating and firing are deliberately
-    // separate — you pick a contact, read what it is, and only then commit — so
-    // an order with `firing` false is a ship tracking its mark with the guns
-    // silent, arcs lit and aim solutions live.
+    // One fire-control channel — a "fire unit": the contact it is fighting and
+    // whether it is shooting. Every battery mount belongs to exactly one channel
+    // (Weapon::channel holds its id): a *lone* mount has its own channel (`group`
+    // false) and a *group* is a channel several mounts share (`group` true). Either
+    // way the order lives on the channel, not the mount — "this unit, engage that
+    // one" — and every mount on the channel answers only whether the contact is
+    // inside its own arc and range. A mount that cannot bear holds, and starts
+    // firing the moment the target drifts into its arc, with no further order, which
+    // is why a channel carries a contact and not a list of guns.
     //
-    // The order lives on the ship rather than on each weapon because that is the
-    // decision being made: "engage that one", not "gun three, engage that one".
-    // Every weapon then answers only whether the contact is inside its own arc
-    // and range. A battery that cannot bear simply holds, and starts firing the
-    // moment the target drifts into its arc, with no further order — which is
-    // why the order carries a contact and not a list of guns.
+    // Designating and firing are deliberately separate — pick a contact, read what
+    // it is, and only then commit — so a channel with `firing` false is a unit
+    // tracking its mark with the guns silent, arcs lit and aim solutions live.
     //
-    // The weapons system clears the whole order once the target is dead or gone
-    // from the registry; that is what makes "fire until it is dead" terminate,
-    // and it is why nothing else needs to watch for a target's death.
+    // `id` is a stable handle the mounts reference; it is never reused, so a mount's
+    // channel resolves even as the channel list is edited. `group` only shapes how
+    // the Target window draws the unit (a lone mount vs a group with a member list);
+    // the weapons system treats every channel identically. The weapons system clears
+    // a channel's target once it is dead or gone from the registry — what makes
+    // "fire until it is dead" terminate, per unit.
     //
-    // The player's order comes from clicking a contact and the Target window's
-    // Fire/Hold. An enemy's is issued by the aggro system, which fires as soon
-    // as it has locked something. One component either way, so both sides shoot
-    // down the same path rather than the AI having a private one.
-    //
-    // `firing`, `salvo` and `freeFire` are three ways to say shoot, and each
-    // grants a gun the shot on its own — they are not a mode dial. `firing` is
-    // the standing order on the designated contact; `salvo` is one round from
-    // whatever is loaded; `freeFire` releases the guns from the designated
-    // contact altogether. Free fire is the only one that lets a gun shoot at
-    // something the ship never named, which is why it alone changes what a
-    // weapon may aim at rather than just when it may pull the trigger.
-    struct FireOrder {
+    // `firing`, `salvo` and `freeFire` are three ways to say shoot, each granting a
+    // gun the shot on its own — not a mode dial. `firing` is the standing order on
+    // the designated contact; `salvo` is one round from whatever is loaded;
+    // `freeFire` releases *this unit's* guns from the designated contact. Free fire
+    // is the only one that lets a gun shoot at something the unit never named, which
+    // is why it alone changes what a weapon may aim at rather than just when it may
+    // pull the trigger — and it is scoped to the unit, so releasing one unit's guns
+    // never disturbs another's.
+    struct FireChannel {
+        int id = 0;                       // stable handle the mounts reference; never reused
+        bool group = false;               // false = one lone mount's order; true = a shared group
         entt::entity target = entt::null; // the designated contact, or null for none
-        bool firing = false;              // true = shoot it whenever a gun bears
+        bool firing = false;              // true = shoot it whenever an assigned gun bears
 
-        // A single round from every gun that bears and is loaded, then done.
-        // A latch, not a state: the weapons system consumes it the tick after
-        // it is set and clears it, so it survives exactly one update however
-        // many frames the button is held. Guns still reloading miss it — the
-        // salvo is what the battery can fire *now*, not a volley it waits to
-        // assemble.
+        // A single round from every assigned gun that bears and is loaded, then
+        // done. A latch, not a state: the weapons system consumes it the tick after
+        // it is set and clears it, so it survives exactly one update however many
+        // frames the button is held. Guns still reloading miss it — the salvo is
+        // what the unit can fire *now*, not a volley it waits to assemble.
         bool salvo = false;
 
-        // Weapons free: every gun engages the nearest foe it can bear on, of
-        // its own accord and without a designated contact. The designated
-        // contact still comes first for any gun that can reach it, so ordering
-        // free fire never pulls the battery off the mark you chose — it only
+        // Weapons free: every gun on this unit engages the nearest foe it can bear
+        // on, of its own accord and without a designated contact. The unit's
+        // designated contact still comes first for any gun that can reach it, so
+        // ordering free fire never pulls the unit off the mark chosen — it only
         // finds work for the guns that could not reach it anyway.
         bool freeFire = false;
+
+        // How many rounds a Salvo releases from *each* weapon on this unit — the
+        // player-set roller in the Target window. A gun ripples this many shots out
+        // over its cooldown; a launcher this many tubes (capped at those ready when
+        // it fires). It lives on the unit, not the weapon, so one roller governs a
+        // whole group. Each weapon drains its own Weapon::pending from this when the
+        // salvo is ordered.
+        int salvoSize = 1;
+
+        // Whether this unit's weapons draw their firing arcs. Purely a display
+        // toggle — every unit's arcs are on by default (see render_system), and the
+        // player switches a unit's off to declutter the view, since with no
+        // enable/disable there is otherwise nothing to hide an idle arc. Scoped to
+        // the unit, so a group's arcs toggle together.
+        bool showArc = true;
+    };
+
+    // A ship's fire control: its fire units. Every battery mount is on exactly one
+    // channel here — its own lone channel or a group it shares. The player's ship
+    // starts with one lone channel per mount (each gun its own unit) and forms
+    // groups from the Target window; the enemy keeps a single channel its whole
+    // battery shares, driven by the aggro system (`channels.front()`). `nextId`
+    // hands out a fresh id per channel so a mount's channel is never ambiguous even
+    // as units are made and disbanded. One component either way, so both sides shoot
+    // down the same path rather than the AI having a private one.
+    struct FireControl {
+        std::vector<FireChannel> channels; // fire units, in display order
+        int nextId = 0;                    // next channel id to hand out
     };
 
     // Which side a ship fights for. Weapons engage hulls of a different

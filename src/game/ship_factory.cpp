@@ -67,10 +67,6 @@ namespace naval {
         registry.emplace<Helm>(entity, Helm{});
         registry.emplace<Wake>(entity, Wake{});
         registry.emplace<Combatant>(entity, Combatant{ faction });
-        // Every combatant carries an order, empty until something issues one —
-        // the player's Target window, or the aggro system for an enemy. Without
-        // it the ship's guns are invisible to the weapons system.
-        registry.emplace<FireOrder>(entity, FireOrder{});
         registry.emplace<Sounds>(entity, Sounds{ audio.Find(hull.explosionSound) });
         registry.emplace<Shake>(entity, Shake{ hull.explosionShakeM });
 
@@ -123,14 +119,14 @@ namespace naval {
                 weapon.turnRate = launcherDef.turnRate;
                 weapon.range = munitionDef.range;
                 // A launcher fires from a bank of tubes rather than on a cooldown:
-                // it starts fully loaded. A salvo defaults to a single tube so an
-                // accidental Salvo does not empty the whole bank; the player raises
-                // the salvo size deliberately when they want a heavier volley.
+                // it starts fully loaded. The salvo size lives on the fire unit
+                // (FireChannel), defaulting to one so an accidental Salvo does not
+                // empty the whole bank; the player raises it deliberately for a
+                // heavier volley.
                 weapon.tubeCount = launcherDef.tubes;
                 weapon.readyTubes = launcherDef.tubes;
                 weapon.launchInterval = launcherDef.launchInterval;
                 weapon.reloadTime = launcherDef.reloadTime;
-                weapon.salvoSize = 1;
                 weapon.damage = munitionDef.damage;
                 weapon.projectileRadiusM = munitionDef.radiusM;
                 weapon.munitionDrawLengthM = munitionDef.drawLengthM;
@@ -150,16 +146,41 @@ namespace naval {
                 weapon.fireSoundLoops = audio.IsLooping(weapon.fireSound);
                 weapon.fireShakeM = launcherDef.fireShakeM;
             }
-            // The player's offensive mounts start switched out, so opening an
-            // engagement is a deliberate act of ticking in the weapons wanted
-            // rather than the whole battery cutting loose at once. Point defence
-            // is the exception: it is a standing, hands-off shield, so it comes up
-            // enabled even on the player's ship — a CIWS the captain has to switch
-            // on before the first missile arrives is a trap, not a control. An
-            // enemy battery, which nothing toggles, stays enabled and fights in full.
+            // Point defence stands outside the fire-unit model — a standing,
+            // hands-off shield answering inbound missiles on its own — so it comes up
+            // enabled even on the player's ship (a CIWS the captain has to switch on
+            // before the first missile arrives is a trap, not a control). A battery
+            // mount's `enabled` is unused; its participation is its channel, assigned
+            // below.
             weapon.enabled = faction != Faction::Player || weapon.pointDefense;
             armament.weapons.push_back(weapon);
         }
+
+        // Seed fire control from the battery just built. The player gets one lone
+        // channel per mount — each gun its own fire unit, silent until committed —
+        // and forms groups from the Target window. The enemy gets a single shared
+        // channel its whole battery rides, which the aggro system drives; it never
+        // splits its fire. Point-defence mounts stay off every channel (-1).
+        FireControl fireControl;
+        if (faction == Faction::Player) {
+            for (auto& weapon : armament.weapons) {
+                if (weapon.pointDefense) {
+                    continue;
+                }
+                int const id = fireControl.nextId++;
+                fireControl.channels.push_back(FireChannel{ id, /*group*/ false });
+                weapon.channel = id;
+            }
+        } else {
+            int const id = fireControl.nextId++;
+            fireControl.channels.push_back(FireChannel{ id, /*group*/ true });
+            for (auto& weapon : armament.weapons) {
+                if (!weapon.pointDefense) {
+                    weapon.channel = id;
+                }
+            }
+        }
+        registry.emplace<FireControl>(entity, std::move(fireControl));
         registry.emplace<Armament>(entity, std::move(armament));
 
         return entity;

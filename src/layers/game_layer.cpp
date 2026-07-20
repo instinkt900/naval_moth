@@ -21,7 +21,10 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <random>
+#include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace naval {
@@ -108,33 +111,6 @@ namespace naval {
         }
     }
 
-    entt::entity GameLayer::PickTmaFix(b2Vec2 world, float pickRadiusM) const {
-        auto const* picture = m_registry.try_get<ContactPicture>(m_ship);
-        auto const* trackFile = m_registry.try_get<TrackFile>(m_ship);
-        if (picture == nullptr || trackFile == nullptr) {
-            return entt::null;
-        }
-        // Nearest solved estimate the pick disc touches. Only a passive (bearing)
-        // contact carries a TMA fix; a positioned one is picked by its hull instead.
-        entt::entity best = entt::null;
-        float bestDist = pickRadiusM;
-        for (auto const& entry : picture->contacts) {
-            if (entry.second.level != DetectLevel::Bearing) {
-                continue;
-            }
-            auto const it = trackFile->tracks.find(entry.first);
-            if (it == trackFile->tracks.end() || !it->second.solved) {
-                continue;
-            }
-            float const dist = (it->second.position - world).Length();
-            if (dist < bestDist) {
-                best = entry.first;
-                bestDist = dist;
-            }
-        }
-        return best;
-    }
-
     bool GameLayer::OnEvent(moth_ui::Event const& event) {
         moth_ui::EventDispatch dispatch(event);
         dispatch.Dispatch(this, &GameLayer::OnMouseDown);
@@ -153,48 +129,10 @@ namespace naval {
         b2Vec2 const world =
             m_camera.ScreenToWorld({ static_cast<float>(pos.x), static_cast<float>(pos.y) });
 
-        // A click on a contact designates it rather than steering the ship into
-        // it. The pick tolerance is a comfortable click in pixels, converted to
-        // metres against the live zoom here, so a contact is no harder to hit
-        // when it has shrunk to a speck at survey zoom than when it fills the
-        // view — the sea below is a big target, but a ship on it isn't.
-        constexpr float kPickPx = 8.0f;
-        entt::entity contact =
-            ContactAt(m_registry, world, Faction::Enemy, kPickPx / m_camera.pixelsPerMeter);
-        // Designation needs a *fix*, not just an awareness. A positioned contact
-        // (radar or visual) is picked by its hull above, whose drawn position is its
-        // true one; gate it to the player's own picture and reject a bare bearing,
-        // which has no known position. Failing that, a passive contact the TMA
-        // solver has ranged can be designated by clicking its estimate marker — the
-        // true hull is elsewhere and unseen, so laying guns on it means laying on the
-        // solution.
-        if (contact != entt::null) {
-            auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
-            auto const it = contacts.find(contact);
-            if (it == contacts.end() || it->second.level == DetectLevel::Bearing) {
-                contact = entt::null;
-            }
-        }
-        if (contact == entt::null) {
-            // A more generous disc for the estimate marker, which the player aims at
-            // as a ring rather than picking off a hull silhouette.
-            constexpr float kTmaPickPx = 24.0f;
-            contact = PickTmaFix(world, kTmaPickPx / m_camera.pixelsPerMeter);
-        }
-        if (contact != entt::null) {
-            auto& order = m_registry.get<FireOrder>(m_ship);
-            // Designating never opens fire by itself — that is the Fire button's
-            // job. Guarded on the target actually changing so that clicking the
-            // contact you are already engaging doesn't check fire on it.
-            if (order.target != contact) {
-                order.target = contact;
-                order.firing = false;
-            }
-            return true;
-        }
-
-        // Open water: the click is a helm order. Each one moves the single
-        // target; nothing is queued.
+        // A click is a helm order, plain and simple — designating a contact is no
+        // longer a click on the water but a pick from a fire unit's target dropdown
+        // in the Target window (see DrawTargetPanel), so the two never collide. Each
+        // click moves the single move target; nothing is queued.
         auto& target = m_registry.get<MoveTarget>(m_ship);
         target.point = world;
         target.active = true;
@@ -771,246 +709,357 @@ namespace naval {
         ImGui::End();
     }
 
-    void GameLayer::DrawContactReadout(entt::entity target) {
-        // The designated contact as the ship knows it — class, range/bearing,
-        // speed/heading and health read from the ship's own belief (see KnownAim),
-        // not the hull's truth. A radar or visual fix reads true; a passive TMA fix
-        // reads its estimate, so the range shown is the one the guns will shoot at.
-        // Class, health, speed and heading resolve only once identified (or, for a
-        // passive fix, from the solution's own velocity, i.e. its course); a
-        // positioned but unidentified contact keeps them masked, and a designation
-        // whose solution has lapsed reads "no solution".
-        constexpr float kMetresPerSecToKnots = 1.94384f;
-        b2Body* self = m_registry.get<Physics>(m_ship).body;
-        b2Vec2 const shipPos = self->GetPosition();
-        float const shipAngle = self->GetAngle();
-
-        auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
-        auto const cit = contacts.find(target);
-        bool const identified = cit != contacts.end() && cit->second.identified;
-        AimBelief const belief = KnownAim(m_registry, m_ship, target);
-
-        char const* type = "Unknown";
-        if (identified) {
-            auto const* id = m_registry.try_get<Identity>(target);
-            type = id != nullptr ? id->name.c_str() : "contact";
+    std::vector<std::pair<entt::entity, std::string>> GameLayer::DesignatableContacts() {
+        std::vector<std::pair<entt::entity, std::string>> out;
+        auto const* picture = m_registry.try_get<ContactPicture>(m_ship);
+        if (picture == nullptr) {
+            return out;
         }
-        ImGui::TextUnformatted(type);
-        ImGui::Separator();
-
-        if (!belief.ok) {
-            ImGui::TextUnformatted("no solution");
-        } else {
-            b2Vec2 const toContact = belief.pos - shipPos;
-            float const rangeM = toContact.Length();
-            float const bearingDeg =
-                Norm360((std::atan2(toContact.y, toContact.x) - shipAngle) * moth_ui::kRadToDeg);
-            if (identified || belief.estimate) {
-                float const speedKn = belief.vel.Length() * kMetresPerSecToKnots;
-                float const headingDeg =
-                    belief.estimate
-                        ? Norm360(std::atan2(belief.vel.y, belief.vel.x) * moth_ui::kRadToDeg)
-                        : Norm360(m_registry.get<Physics>(target).body->GetAngle() * moth_ui::kRadToDeg);
-                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd {:.1f} kn", rangeM, speedKn).c_str());
-                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg {:.0f}", bearingDeg, headingDeg).c_str());
-            } else {
-                ImGui::TextUnformatted(fmt::format("rng {:.0f} m   spd ---", rangeM).c_str());
-                ImGui::TextUnformatted(fmt::format("brg {:.0f}   hdg ---", bearingDeg).c_str());
+        // Every held contact that has a firing solution (KnownAim ok): a positioned
+        // fix, or a passive bearing the TMA solver has ranged. A bare unsolved
+        // bearing is not designatable — there is nothing to lay guns on. Labelled by
+        // the call-sign pinned on the layer, with the class once identified.
+        for (auto const& entry : picture->contacts) {
+            entt::entity const contact = entry.first;
+            if (!m_registry.valid(contact) || !KnownAim(m_registry, m_ship, contact).ok) {
+                continue;
             }
+            auto const labelIt = m_contactLabels.find(contact);
+            std::string const callSign =
+                labelIt != m_contactLabels.end()
+                    ? fmt::format("Blip {}", static_cast<char>('A' + labelIt->second))
+                    : "Blip ?";
+            char const* cls = "Unknown";
+            if (entry.second.identified) {
+                if (auto const* id = m_registry.try_get<Identity>(contact); id != nullptr) {
+                    cls = id->name.c_str();
+                }
+            }
+            out.emplace_back(contact, fmt::format("{} - {}", callSign, cls));
         }
-
-        if (auto const* health = m_registry.try_get<Health>(target);
-            identified && health != nullptr && health->max > 0.0f) {
-            ImGui::ProgressBar(health->current / health->max, ImVec2(-1.0f, 0.0f),
-                               fmt::format("{:.0f} / {:.0f}", health->current, health->max).c_str());
-        }
+        // Sorted by call-sign slot so the dropdown order is stable frame to frame.
+        std::sort(out.begin(), out.end(), [this](auto const& a, auto const& b) {
+            auto const ita = m_contactLabels.find(a.first);
+            auto const itb = m_contactLabels.find(b.first);
+            int const sa = ita != m_contactLabels.end() ? ita->second : std::numeric_limits<int>::max();
+            int const sb = itb != m_contactLabels.end() ? itb->second : std::numeric_limits<int>::max();
+            return sa < sb;
+        });
+        return out;
     }
 
     void GameLayer::DrawTargetPanel() {
-        auto& order = m_registry.get<FireOrder>(m_ship);
+        auto& fireControl = m_registry.get<FireControl>(m_ship);
+        auto* armament = m_registry.try_get<Armament>(m_ship);
 
         ImGui::Begin("Target");
-
-        // The designated contact leads the window — its picture and the orders
-        // that act on it. The weapons system drops the order the moment its
-        // contact dies, so an empty order here is the normal end of an
-        // engagement, not an error; free fire and the battery list below stand
-        // without a contact, so only this leading block is gated on there being
-        // one.
-        if (order.target != entt::null && m_registry.valid(order.target)) {
-            DrawContactReadout(order.target);
-            ImGui::Separator();
-
-            // How much of the battery can actually reach the contact right now.
-            // The count is the honest answer to "why isn't anything happening?"
-            // after pressing Fire with the target abaft the beam of every gun.
-            // It counts hulls that bear, not guns switched in — a bearing gun
-            // held out of the battery still shows here, and its row below says
-            // it is disabled.
-            int bearing = 0;
-            int total = 0;
-            if (auto const* armament = m_registry.try_get<Armament>(m_ship); armament != nullptr) {
-                total = static_cast<int>(armament->weapons.size());
-                for (auto const& weapon : armament->weapons) {
-                    bearing += weapon.hasTarget ? 1 : 0;
-                }
-            }
-            ImGui::TextUnformatted(fmt::format("{} of {} guns bear", bearing, total).c_str());
-
-            // One button for the whole ship: every gun that bears and is
-            // switched in fires until the contact is dead or this is clicked
-            // again. Never disabled for want of a gun bearing — ordering fire
-            // while manoeuvring onto the target is the point, and the guns join
-            // in as the arcs come onto it.
-            if (ImGui::Button(order.firing ? "Hold" : "Fire")) {
-                order.firing = !order.firing;
-            }
-
-            // A salvo beside it, being the same order with less commitment: one
-            // round from whatever is loaded, bearing and switched in, and no
-            // standing order left set behind it. Unlike Fire it needs no
-            // cancelling, which is why it is a plain button and not a second
-            // thing that latches.
-            ImGui::SameLine();
-            if (ImGui::Button("Salvo")) {
-                order.salvo = true;
-            }
-        } else {
-            ImGui::TextUnformatted("No target designated");
-            ImGui::TextUnformatted("Click a contact to designate it.");
-        }
-
-        // Free fire and the battery both answer to no particular contact, so
-        // they sit below the leading block and show whether or not one is set.
-        // The per-gun enable ticks in the battery gate all three orders above.
-        DrawWeaponsRelease(order);
-        DrawWeaponControls();
-
-        ImGui::End();
-    }
-
-    void GameLayer::DrawWeaponsRelease(FireOrder& order) {
-        // A checkbox rather than a button like the two above it: those are acts,
-        // this is a state the ship stays in, and a checkbox shows whether it is
-        // set without the player having to work out whether a button's label is
-        // naming the mode or the way out of it.
-        ImGui::Separator();
-        ImGui::Checkbox("Free fire", &order.freeFire);
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Every gun engages the nearest foe it can bear on.\n"
-                              "The designated target still comes first.");
-        }
-    }
-
-    void GameLayer::DrawWeaponControls() {
-        auto const& order = m_registry.get<FireOrder>(m_ship);
-        auto* armament = m_registry.try_get<Armament>(m_ship);
         if (armament == nullptr) {
-            ImGui::Separator();
             ImGui::TextUnformatted("No armament");
+            ImGui::End();
             return;
         }
+        auto& weapons = armament->weapons;
 
-        // One weapon's row: the enable tick, the name, its two draw toggles, and
-        // its status. Unticked, the weapon is switched out of the fire orders and
-        // holds through all of them while still tracking and drawing. This is the
-        // one per-weapon fire control — a weapon's only say in the engagement is
-        // whether it takes part at all. The tick's label is hidden (the name
-        // beside it labels it); PushID keeps it unique across the whole battery.
-        auto drawRow = [&](std::size_t i) {
-            ImGui::Separator();
-            Weapon& weapon = armament->weapons[i];
-            ImGui::PushID(static_cast<int>(i));
+        // The contacts any unit may designate this frame, shared across every unit's
+        // dropdown; and the groups (channels shared by mounts), labelled A, B... by
+        // order, for the group headers and the "Add to group" menus.
+        auto const options = DesignatableContacts();
+        std::vector<std::pair<int, std::string>> groups; // (channel id, label)
+        for (auto const& channel : fireControl.channels) {
+            if (channel.group) {
+                groups.emplace_back(channel.id,
+                                    fmt::format("Group {}", static_cast<char>('A' + groups.size())));
+            }
+        }
 
-            ImGui::Checkbox("##enable", &weapon.enabled);
-            ImGui::SameLine();
-            ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
-            if (weapon.kind == WeaponKind::Gun) {
-                ImGui::SameLine();
-                ImGui::Checkbox("Show spread", &weapon.showSpread);
-            } else {
-                // A launcher's character is what it is loaded with, so name the
-                // munition beside it, greyed to read as a subtitle to the mount.
-                if (!weapon.munitionName.empty()) {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("(%s)", weapon.munitionName.c_str());
-                }
-
-                // How many munitions a Salvo order releases from this launcher: a
-                // scroll limited to the tubes ready to fire, since it can send no
-                // more than are loaded. Standing Fire ignores it and ripples the
-                // whole bank out regardless.
-                ImGui::SameLine();
-                int const maxLaunch = std::max(1, weapon.readyTubes);
-                ImGui::SetNextItemWidth(120.0f);
-                if (ImGui::InputInt("Salvo size", &weapon.salvoSize)) {
-                    weapon.salvoSize = std::clamp(weapon.salvoSize, 1, maxLaunch);
+        // A fire unit's target dropdown: pick a held contact by call-sign (or clear).
+        // Designation lives entirely here — clicking the water is a helm order — and
+        // never opens fire by itself; that is the Fire button's job.
+        auto targetDropdown = [&](FireChannel& channel) {
+            std::string preview = "(none)";
+            if (channel.target != entt::null && m_registry.valid(channel.target)) {
+                preview = "(holding)"; // designated, but its fix has lapsed this frame
+                for (auto const& option : options) {
+                    if (option.first == channel.target) {
+                        preview = option.second;
+                        break;
+                    }
                 }
             }
+            ImGui::SetNextItemWidth(190.0f);
+            if (ImGui::BeginCombo("Target", preview.c_str())) {
+                if (ImGui::Selectable("(none)", channel.target == entt::null)) {
+                    channel.target = entt::null;
+                    channel.firing = false;
+                }
+                for (auto const& option : options) {
+                    if (ImGui::Selectable(option.second.c_str(), option.first == channel.target) &&
+                        channel.target != option.first) {
+                        channel.target = option.first;
+                        channel.firing = false;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+        };
 
-            // What this weapon is doing about the ship's order. Read-only apart
-            // from the enable tick above: the order itself is the leading block's
-            // to give.
-            //
-            // Read off the weapon's own mark, not hasTarget, so that under free
-            // fire a weapon laid on a contact of its own says so instead of
-            // reporting "no bearing" on the strength of the designated one. A
-            // switched-out weapon reads "disabled" ahead of any of that, since it
-            // is holding whatever it can reach. When it does bear, the barrel is
-            // either still slewing onto the mark or acquired and on it — the
-            // distinction the turn rate makes visible.
+        // A fire unit's order buttons — identical for a lone mount and a group:
+        // Fire/Hold (standing), Salvo (one round from whatever is loaded), and free
+        // fire (release to the nearest foe the guns can bear on). Fire is never
+        // disabled for want of a gun bearing — ordering fire while manoeuvring onto
+        // the mark is the point, and the guns join in as their arcs come on.
+        auto orderButtons = [&](FireChannel& channel) {
+            if (ImGui::Button(channel.firing ? "Hold" : "Fire")) {
+                channel.firing = !channel.firing;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Salvo")) {
+                channel.salvo = true;
+            }
+            ImGui::SameLine();
+            ImGui::Checkbox("Free", &channel.freeFire);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Engage the nearest foe the guns can bear on.\n"
+                                  "The designated target still comes first.");
+            }
+            // Show or hide this unit's firing arcs on the water — a display toggle to
+            // declutter the view.
+            ImGui::SameLine();
+            ImGui::Checkbox("Arcs", &channel.showArc);
+            // How many rounds a Salvo releases from each weapon on the unit — a gun
+            // ripples that many shots over its cooldown, a launcher fires that many
+            // tubes (capped at those loaded).
+            ImGui::SetNextItemWidth(90.0f);
+            if (ImGui::InputInt("Salvo size", &channel.salvoSize)) {
+                channel.salvoSize = std::clamp(channel.salvoSize, 1, 99);
+            }
+        };
+
+        // A mount's own extras, not shared by a group: the spread preview toggle for
+        // a gun, or the loaded munition for a launcher. (Salvo size is a unit control
+        // now, on the order row above.)
+        auto weaponExtras = [&](Weapon& weapon) {
+            if (weapon.kind == WeaponKind::Gun) {
+                ImGui::Checkbox("Show spread", &weapon.showSpread);
+            } else if (!weapon.munitionName.empty()) {
+                ImGui::TextDisabled("(%s)", weapon.munitionName.c_str());
+            }
+        };
+
+        // A mount's one-line status about its unit's order: slewing onto the mark,
+        // firing, or holding acquired, with the reload clock alongside; a launcher
+        // shows its ready tubes instead. Read off the mount's own lay, so a slewing
+        // gun says so rather than "firing".
+        auto weaponStatus = [&](Weapon const& weapon, FireChannel const& channel) {
             bool const laid = weapon.target != entt::null && m_registry.valid(weapon.target);
-            bool const shooting = order.firing || order.freeFire;
-
+            bool const shooting = channel.firing || channel.freeFire;
             char const* status = "no bearing";
-            if (!weapon.enabled) {
-                status = "disabled";
-            } else if (laid && !weapon.acquired) {
+            if (laid && !weapon.acquired) {
                 status = "slewing";
             } else if (laid) {
                 status = shooting ? "firing" : "acquired, holding";
             }
-
-            // The reload clock rides alongside the lay state whenever the weapon
-            // is cooling, firing or not — so an auto-firing battery still shows
-            // each mount training and reloading rather than a bare "firing". A
-            // weapon ordered to fire but still slewing reads "slewing", since with
-            // the trigger gated on acquisition it is holding its rounds. A launcher
-            // shows its ready tubes instead, with the time to the next reloading in.
             if (weapon.kind != WeaponKind::Gun) {
                 std::string line = fmt::format("{}  {}/{} tubes", status, weapon.readyTubes, weapon.tubeCount);
                 if (weapon.readyTubes < weapon.tubeCount && weapon.reloadTimer > 0.0f) {
                     line += fmt::format("  reloading {:.1f}s", weapon.reloadTimer);
                 }
                 ImGui::TextUnformatted(line.c_str());
-            } else if (weapon.enabled && weapon.cooldownRemaining > 0.0f) {
+            } else if (weapon.cooldownRemaining > 0.0f) {
                 ImGui::TextUnformatted(
                     fmt::format("{}  reloading {:.1f}s", status, weapon.cooldownRemaining).c_str());
             } else {
                 ImGui::TextUnformatted(status);
             }
-
-            ImGui::PopID();
         };
 
-        // A point-defence mount's row is stripped down to what it actually offers:
-        // the enable tick and its name, then a read-only status. It answers inbound
-        // missiles on its own and stands outside the fire order, so there is no
-        // salvo, no spread preview, and no fire button to show — the tick is the
-        // captain's whole say. Status reads "off" when switched out, then, once it
-        // has a missile, "tracking" while the mount is still swinging onto it and
-        // "engaging" once trained and firing — the distinction the turn rate makes,
-        // since a mount only scores once acquired (see combat_system). "searching"
-        // otherwise.
-        auto drawPointDefenseRow = [&](std::size_t i) {
-            ImGui::Separator();
-            Weapon& weapon = armament->weapons[i];
-            ImGui::PushID(static_cast<int>(i));
+        // A deferred edit to the unit list — at most one per frame, applied after the
+        // draw so the channel vector is not mutated mid-iteration.
+        enum class Op { None, NewGroup, JoinGroup, LeaveGroup, Disband };
+        Op op = Op::None;
+        std::size_t opWeapon = 0; // mount index for NewGroup / JoinGroup / LeaveGroup
+        int opGroup = -1;         // group channel id for JoinGroup
 
+        // The battery as a flat list of fire units, a separator between each: a lone
+        // mount reads as itself, a group as the same controls plus its member list.
+        // Groups are listed first, the lone mounts after, so the split-fire units sit
+        // at the top; within each the channel order holds. Each unit is scoped by its
+        // channel id so its widgets stay distinct. (The pointers stay valid — the
+        // channel vector is only edited after this draw, from the deferred op.)
+        std::vector<FireChannel*> order;
+        for (auto& channel : fireControl.channels) {
+            if (channel.group) {
+                order.push_back(&channel);
+            }
+        }
+        for (auto& channel : fireControl.channels) {
+            if (!channel.group) {
+                order.push_back(&channel);
+            }
+        }
+        std::size_t groupOrdinal = 0;
+        for (auto* channelPtr : order) {
+            FireChannel& channel = *channelPtr;
+            ImGui::PushID(channel.id);
+            ImGui::Separator();
+            if (channel.group) {
+                ImGui::TextUnformatted(groups[groupOrdinal++].second.c_str());
+                ImGui::SameLine();
+                bool const disband = ImGui::SmallButton("Disband");
+                targetDropdown(channel);
+                orderButtons(channel);
+
+                int bearing = 0;
+                int total = 0;
+                for (auto const& weapon : weapons) {
+                    if (weapon.channel == channel.id) {
+                        ++total;
+                        bearing += weapon.hasTarget ? 1 : 0;
+                    }
+                }
+                ImGui::TextUnformatted(fmt::format("{} of {} guns bear", bearing, total).c_str());
+
+                // The mounts the group drives, each with a Remove back to its own
+                // lone unit.
+                for (std::size_t i = 0; i < weapons.size(); ++i) {
+                    if (weapons[i].channel != channel.id) {
+                        continue;
+                    }
+                    ImGui::PushID(static_cast<int>(i));
+                    ImGui::Bullet();
+                    ImGui::TextUnformatted(weapons[i].name.empty() ? "Weapon" : weapons[i].name.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) {
+                        op = Op::LeaveGroup;
+                        opWeapon = i;
+                    }
+                    weaponExtras(weapons[i]);
+                    weaponStatus(weapons[i], channel);
+                    ImGui::PopID();
+                }
+                if (total == 0) {
+                    ImGui::TextDisabled("(no weapons)");
+                }
+                if (disband) {
+                    op = Op::Disband;
+                    opGroup = channel.id;
+                }
+            } else {
+                // A lone mount: the single weapon that owns this channel.
+                std::size_t wi = weapons.size();
+                for (std::size_t i = 0; i < weapons.size(); ++i) {
+                    if (weapons[i].channel == channel.id) {
+                        wi = i;
+                        break;
+                    }
+                }
+                if (wi == weapons.size()) {
+                    ImGui::PopID();
+                    continue; // an orphaned channel with no owning mount; cleaned below
+                }
+                Weapon& weapon = weapons[wi];
+                ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
+                targetDropdown(channel);
+                weaponExtras(weapon);
+                orderButtons(channel);
+                weaponStatus(weapon, channel);
+
+                // Fold this mount into a group — an existing one, or a fresh group
+                // (which carries the mount's current order over so nothing resets).
+                ImGui::SetNextItemWidth(140.0f);
+                if (ImGui::BeginCombo("##addto", "Add to group")) {
+                    for (auto const& g : groups) {
+                        if (ImGui::Selectable(g.second.c_str())) {
+                            op = Op::JoinGroup;
+                            opWeapon = wi;
+                            opGroup = g.first;
+                        }
+                    }
+                    if (!groups.empty()) {
+                        ImGui::Separator();
+                    }
+                    if (ImGui::Selectable("New group")) {
+                        op = Op::NewGroup;
+                        opWeapon = wi;
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+            ImGui::PopID();
+        }
+
+        // Apply the deferred edit. Moving a mount off a channel is all it takes; the
+        // cleanup below drops whatever channel that leaves unowned.
+        switch (op) {
+        case Op::NewGroup: {
+            FireChannel g{ fireControl.nextId++, /*group*/ true };
+            for (auto const& c : fireControl.channels) {
+                if (c.id == weapons[opWeapon].channel) {
+                    g.target = c.target;
+                    g.firing = c.firing;
+                    g.freeFire = c.freeFire;
+                    break;
+                }
+            }
+            weapons[opWeapon].channel = g.id;
+            fireControl.channels.push_back(g);
+            break;
+        }
+        case Op::JoinGroup:
+            weapons[opWeapon].channel = opGroup; // adopts the group's order
+            break;
+        case Op::LeaveGroup: {
+            FireChannel lone{ fireControl.nextId++, /*group*/ false };
+            weapons[opWeapon].channel = lone.id;
+            fireControl.channels.push_back(lone);
+            break;
+        }
+        case Op::Disband:
+            for (auto& weapon : weapons) {
+                if (weapon.channel == opGroup) {
+                    FireChannel lone{ fireControl.nextId++, /*group*/ false };
+                    weapon.channel = lone.id;
+                    fireControl.channels.push_back(lone);
+                }
+            }
+            break;
+        case Op::None:
+            break;
+        }
+        if (op != Op::None) {
+            // Drop every channel no mount owns now — the lone unit a mount just left
+            // for a group, and any group emptied of members. A lone channel always
+            // has exactly one owner, so only those two are ever removed.
+            std::unordered_set<int> owned;
+            for (auto const& weapon : weapons) {
+                if (weapon.channel >= 0) {
+                    owned.insert(weapon.channel);
+                }
+            }
+            fireControl.channels.erase(
+                std::remove_if(fireControl.channels.begin(), fireControl.channels.end(),
+                               [&](FireChannel const& c) { return owned.count(c.id) == 0; }),
+                fireControl.channels.end());
+        }
+
+        // Point defence sits apart, outside the fire-unit model — a standing shield
+        // with only an enable tick and a read-only status ("off" switched out, then
+        // "tracking" while it slews onto a missile and "engaging" once trained).
+        bool headed = false;
+        for (std::size_t i = 0; i < weapons.size(); ++i) {
+            Weapon& weapon = weapons[i];
+            if (!weapon.pointDefense) {
+                continue;
+            }
+            if (!headed) {
+                ImGui::Separator();
+                ImGui::TextUnformatted("Point Defense");
+                headed = true;
+            }
+            ImGui::PushID(static_cast<int>(i));
             ImGui::Checkbox("##enable", &weapon.enabled);
             ImGui::SameLine();
             ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
-
             bool const laid = weapon.target != entt::null && m_registry.valid(weapon.target);
             char const* status = "searching";
             if (!weapon.enabled) {
@@ -1019,36 +1068,9 @@ namespace naval {
                 status = weapon.acquired ? "engaging" : "tracking";
             }
             ImGui::TextUnformatted(status);
-
             ImGui::PopID();
-        };
+        }
 
-        // Guns, launchers and point defence are listed apart, each under its own
-        // heading, so the battery reads as distinct systems — the gun line, the
-        // munition cells, and the close-in shield — rather than one mixed list. A
-        // heading shows only if the ship carries that kind. The predicate keeps
-        // point-defence guns out of the plain gun list even though they are Gun
-        // kind, since they answer to a different control entirely.
-        auto drawGroup = [&](char const* heading, auto&& want, auto&& row) {
-            bool headed = false;
-            for (std::size_t i = 0; i < armament->weapons.size(); ++i) {
-                if (!want(armament->weapons[i])) {
-                    continue;
-                }
-                if (!headed) {
-                    ImGui::Separator();
-                    ImGui::TextUnformatted(heading);
-                    headed = true;
-                }
-                row(i);
-            }
-        };
-
-        drawGroup(
-            "Guns", [](Weapon const& w) { return w.kind == WeaponKind::Gun && !w.pointDefense; }, drawRow);
-        drawGroup(
-            "Launchers", [](Weapon const& w) { return w.kind != WeaponKind::Gun; }, drawRow);
-        drawGroup(
-            "Point Defense", [](Weapon const& w) { return w.pointDefense; }, drawPointDefenseRow);
+        ImGui::End();
     }
 }

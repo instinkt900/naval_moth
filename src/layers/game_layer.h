@@ -8,7 +8,10 @@
 
 #include <box2d/box2d.h>
 #include <entt/entt.hpp>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 #include <moth_ui/events/event_key.h>
 #include <moth_ui/events/event_mouse.h>
 #include <moth_ui/layers/layer.h>
@@ -18,7 +21,7 @@ namespace moth_graphics::graphics {
 }
 
 namespace naval {
-    struct FireOrder;
+    struct FireChannel;
     struct ContactPicture;
 
     // The play space: owns the ECS registry and the Box2D world, steps the
@@ -44,13 +47,6 @@ namespace naval {
         // Scatter enemies across open water in a ring around the player start.
         void SpawnEnemies();
 
-        // The enemy whose solved TMA estimate lies within pickRadiusM of `world`,
-        // or null. Designation clicks fall through to this when no seen or radar-
-        // fixed hull is under the cursor, so the player can lay guns on a passive
-        // fix by clicking its estimate marker — the true hull being elsewhere and
-        // unseen (see OnMouseDown).
-        entt::entity PickTmaFix(b2Vec2 world, float pickRadiusM) const;
-
         // The frame's four render layers, composited bottom to top by Draw() and
         // each toggleable from the Layers panel. Map is the sea and the hulls on
         // it; radar overlays the sensor picture; tactical draws the command picture
@@ -66,31 +62,19 @@ namespace naval {
         // ship, as an alternative to clicking waypoints.
         void DrawHelmPanel();
 
-        // The Target window, which holds the whole gunnery picture: the
-        // designated contact leads it (its picture, how much of the battery
-        // bears, and the ship's fire orders — Fire/Hold, Salvo, weapons
-        // release), and the per-gun battery list sits beneath.
+        // The Target window: the ship's gunnery as a flat list of fire units. Each
+        // ungrouped mount is a unit (name, target dropdown, salvo size, Fire/Salvo
+        // orders, and an "Add to group" control); each group is the same unit with a
+        // member list of the mounts it drives; a separator sits between units. Point
+        // defence gets a plain enable-and-status section at the foot.
         void DrawTargetPanel();
 
-        // The read-only picture of the designated contact at the head of the
-        // Target window — class, range, bearing, speed, heading and health, read
-        // from the ship's own belief of the contact (see KnownAim) rather than the
-        // hull's truth, so a passive TMA fix reads its estimate and a masked
-        // Unknown stays masked. Split from the order controls beneath it, which
-        // mutate the FireOrder.
-        void DrawContactReadout(entt::entity target);
-
-        // The weapons-release control at the foot of the Target window. Split
-        // out because it is the one order that stands without a designated
-        // contact, so it is drawn on both of that window's paths rather than
-        // only the one that has a target to describe.
-        void DrawWeaponsRelease(FireOrder& order);
-
-        // The battery list at the foot of the Target window (no longer its own
-        // window): a per-gun row of an enable tick that switches the gun in or
-        // out of the ship's fire orders, the gun's name, its arc/spread draw
-        // toggles, and a line of what that gun is doing about the order.
-        void DrawWeaponControls();
+        // The contacts the player may currently designate — those it holds with a
+        // firing solution (KnownAim ok) — each paired with its call-sign label
+        // ("Blip A - DD", or "Blip A - Unknown" before it is classified), sorted by
+        // call-sign slot. Feeds every fire unit's target dropdown, so a unit is
+        // pointed by picking a contact rather than clicking the water.
+        std::vector<std::pair<entt::entity, std::string>> DesignatableContacts();
 
         // ImGui window listing every contact the player holds — the whole picture
         // as a table, complementing the plot: an auto-assigned call-sign (Blip A,

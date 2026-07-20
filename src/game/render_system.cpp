@@ -14,6 +14,7 @@
 #include <array>
 #include <cmath>
 #include <random>
+#include <unordered_map>
 
 namespace naval {
     namespace {
@@ -434,12 +435,26 @@ namespace naval {
         // at full strength and flatten the idle/active distinction.
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
 
-        // Each enabled weapon's arc: two radial edges out to its range plus the
-        // outer sweep between them, brightening when a target sits inside. The arc
-        // originates from the mount's world position, not the hull centre. A
-        // switched-out weapon draws nothing — its enable tick is the arc's toggle.
+        // Each shown weapon's arc: two radial edges out to its range plus the outer
+        // sweep between them, brightening when a target sits inside. The arc
+        // originates from the mount's world position, not the hull centre. A battery
+        // mount's arc draws while its fire unit has arcs switched on (the per-unit
+        // toggle in the Target window); a point-defence mount's while it is enabled.
+        auto const* fireControl = registry.try_get<FireControl>(ship);
+        auto unitShowsArc = [&](int channel) {
+            if (fireControl == nullptr) {
+                return false;
+            }
+            for (auto const& ch : fireControl->channels) {
+                if (ch.id == channel) {
+                    return ch.showArc;
+                }
+            }
+            return false;
+        };
         for (auto const& weapon : armament->weapons) {
-            if (!weapon.enabled) {
+            bool const shown = weapon.pointDefense ? weapon.enabled : unitShowsArc(weapon.channel);
+            if (!shown) {
                 continue;
             }
             moth_ui::FloatVec2 const originPx = camera.WorldToScreen(body->GetWorldPoint(weapon.mountOffset));
@@ -461,9 +476,9 @@ namespace naval {
                                            originPx.y + (rangePx * std::sin(angle)) };
             };
 
-            // An enabled gun draws a faint red arc, brightening to the active
-            // colour with a target inside its arc. A switched-out gun draws no arc
-            // at all (skipped above), so the enable tick doubles as the arc toggle.
+            // A shown gun draws a faint red arc, brightening to the active colour
+            // with a target inside its arc. A gun whose unit has arcs switched off
+            // draws none (skipped above).
             moth_ui::Color const arcColor = weapon.hasTarget ? kArcActiveColor : kArcEnabledColor;
             graphics.SetColor(arcColor);
 
@@ -523,54 +538,73 @@ namespace naval {
     }
 
     void DrawTargetMarker(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
-        auto const* order = registry.try_get<FireOrder>(ship);
-        if (order == nullptr || order->target == entt::null || !registry.valid(order->target)) {
+        auto const* fireControl = registry.try_get<FireControl>(ship);
+        if (fireControl == nullptr) {
             return;
         }
+        auto const* armament = registry.try_get<Armament>(ship);
 
-        // Ring the designated contact where the ship *believes* it is — the true
-        // hull for a radar or visual fix, the estimate for a passive TMA fix (see
-        // KnownAim) — so the mark never betrays a position the player has not
-        // actually fixed. Nothing to ring if the firing solution has lapsed.
-        AimBelief const belief = KnownAim(registry, ship, order->target);
-        if (!belief.ok) {
-            return;
-        }
-
-        // Red once any gun bears, green while the contact is designated but out
-        // of reach of all of them. The ring answers "can I hit that from here?"
-        // at a glance — the same question the Target window's gun count answers
-        // in words — so it reads off the weapons' own bearing test rather than
-        // re-deriving range, and cannot disagree with what the guns will do.
-        bool armed = false;
-        if (auto const* armament = registry.try_get<Armament>(ship); armament != nullptr) {
-            for (auto const& weapon : armament->weapons) {
-                armed = armed || weapon.hasTarget;
+        // The distinct contacts the ship's fire units are pointed at, and whether
+        // any assigned gun bears on each. Distinct, because several fire units (each
+        // gun is its own unit) can share a target, and their rings would stack into
+        // one over-bright mark; one ring per contact, red if *any* gun laid on it
+        // bears. Reads off the weapons' own bearing test rather than re-deriving
+        // range, so it cannot disagree with what the guns will do.
+        std::unordered_map<entt::entity, bool> armedByTarget;
+        for (auto const& channel : fireControl->channels) {
+            if (channel.target == entt::null || !registry.valid(channel.target)) {
+                continue;
+            }
+            bool armed = false;
+            if (armament != nullptr) {
+                for (auto const& weapon : armament->weapons) {
+                    if (weapon.channel == channel.id && weapon.hasTarget) {
+                        armed = true;
+                        break;
+                    }
+                }
+            }
+            auto const inserted = armedByTarget.emplace(channel.target, armed);
+            if (!inserted.second) {
+                inserted.first->second = inserted.first->second || armed;
             }
         }
-
-        // A known hull takes a circle clearing it whatever way it points: its
-        // circumscribed radius (bow corner to centre), padded so the ring doesn't
-        // graze it and floored in pixels so a speck at survey zoom still carries a
-        // findable mark. A passive estimate has no known size, so it takes a fixed
-        // screen ring on the estimate point instead.
-        constexpr float kPadFrac = 1.35f;
-        constexpr float kMinRadiusPx = 14.0f;
-        constexpr float kEstimateRadiusPx = 18.0f;
-        float radiusPx = kEstimateRadiusPx;
-        if (!belief.estimate) {
-            if (auto const* renderable = registry.try_get<Renderable>(order->target); renderable != nullptr) {
-                float const hullRadiusM = std::sqrt((renderable->halfLengthM * renderable->halfLengthM) +
-                                                    (renderable->halfBeamM * renderable->halfBeamM));
-                radiusPx = std::max(camera.MToPx(hullRadiusM * kPadFrac), kMinRadiusPx);
-            }
-        }
-        moth_ui::FloatVec2 const centrePx = camera.WorldToScreen(belief.pos);
 
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
-        graphics.SetColor(armed ? kTargetRingArmedColor : kTargetRingColor);
-        DrawCircle(graphics, centrePx, radiusPx);
+
+        for (auto const& [target, armed] : armedByTarget) {
+            // Ring the contact where the ship *believes* it is — the true hull for a
+            // radar or visual fix, the estimate for a passive TMA fix (see KnownAim)
+            // — so the mark never betrays a position the player has not actually
+            // fixed. Nothing to ring if the firing solution has lapsed.
+            AimBelief const belief = KnownAim(registry, ship, target);
+            if (!belief.ok) {
+                continue;
+            }
+
+            // A known hull takes a circle clearing it whatever way it points: its
+            // circumscribed radius (bow corner to centre), padded so the ring doesn't
+            // graze it and floored in pixels so a speck at survey zoom still carries a
+            // findable mark. A passive estimate has no known size, so it takes a fixed
+            // screen ring on the estimate point instead.
+            constexpr float kPadFrac = 1.35f;
+            constexpr float kMinRadiusPx = 14.0f;
+            constexpr float kEstimateRadiusPx = 18.0f;
+            float radiusPx = kEstimateRadiusPx;
+            if (!belief.estimate) {
+                if (auto const* renderable = registry.try_get<Renderable>(target); renderable != nullptr) {
+                    float const hullRadiusM = std::sqrt((renderable->halfLengthM * renderable->halfLengthM) +
+                                                        (renderable->halfBeamM * renderable->halfBeamM));
+                    radiusPx = std::max(camera.MToPx(hullRadiusM * kPadFrac), kMinRadiusPx);
+                }
+            }
+            moth_ui::FloatVec2 const centrePx = camera.WorldToScreen(belief.pos);
+
+            graphics.SetColor(armed ? kTargetRingArmedColor : kTargetRingColor);
+            DrawCircle(graphics, centrePx, radiusPx);
+        }
+
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 
