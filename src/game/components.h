@@ -520,8 +520,8 @@ namespace naval {
         float fixStaleness = 0.0f;
 
         // Class-classification state. `identified` is sticky once earned: seen
-        // inside visual range it resolves at once, else it takes kIdentifyDwellS of
-        // radar hold — minutes, not the tens of seconds motion takes — and then
+        // inside visual range it resolves at once, else it takes identifyThresholdS
+        // of radar hold — minutes, not the tens of seconds motion takes — and then
         // stays known for as long as the track lives, so a brief downgrade to a
         // bearing does not un-learn what it is. `dwell` is the seconds of positional
         // hold accumulated toward both that and `motionKnown`, counting only the
@@ -530,7 +530,16 @@ namespace naval {
         // reads the contact's class as Unknown and the plot marks it with an open
         // rather than a filled blip; its course, though, shows as soon as
         // motionKnown, ahead of the class (see velocity).
+        //
+        // identifyThresholdS is the dwell this particular contact must reach before
+        // its class resolves, drawn once at track acquisition uniformly in
+        // [kIdentifyMinS, kIdentifyMaxS] (see sensor_system.cpp). Per-contact rather
+        // than a shared constant so a screenful of blips resolves raggedly instead of
+        // all identifying on the same tick. Left 0 until the first fix draws it;
+        // harmless for a visual contact, which sets identified directly and never
+        // consults it.
         float dwell = 0.0f;
+        float identifyThresholdS = 0.0f;
         bool identified = false;
     };
 

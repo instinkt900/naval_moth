@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <random>
 
 namespace naval {
     namespace {
@@ -14,12 +15,26 @@ namespace naval {
         // (course and speed) falls out of tracking first — a run of fixes
         // differenced over kMotionResolveS betrays where the contact is heading —
         // while the class settles far more slowly, over the minutes of unbroken hold
-        // kIdentifyDwellS asks. Seeing the hull (inside visual range) shortcuts both
-        // at once; a radar contact earns them only by being held, with no close-range
+        // an identification asks. That dwell is not one shared constant: each contact
+        // draws its own threshold uniformly in [kIdentifyMinS, kIdentifyMaxS] when the
+        // track is acquired (see Contact::identifyThresholdS), so a screen full of
+        // blips resolves raggedly rather than all snapping to identified on the same
+        // tick — one hull's cut reads clean early, another's takes the full eight
+        // minutes. Seeing the hull (inside visual range) shortcuts both clocks at
+        // once; a radar contact earns them only by being held, with no close-range
         // shortcut, so a distant blip is a position long before it is a known ship.
-        constexpr float kMotionResolveS = 3.0f;   // s of hold before the velocity estimate is trusted (course shown)
-        constexpr float kIdentifyDwellS = 180.0f;  // s of hold before the class resolves (~3 min)
+        constexpr float kMotionResolveS = 3.0f;    // s of hold before the velocity estimate is trusted (course shown)
+        constexpr float kIdentifyMinS = 180.0f;    // s; fastest a radar class can resolve (3 min)
+        constexpr float kIdentifyMaxS = 480.0f;    // s; slowest a radar class can resolve (8 min)
         constexpr float kVelTauS = 8.0f;           // s; velocity-tracker time constant (alpha-beta, beta = dt/tau)
+
+        // One generator for the whole run, seeded once, shared by every observer's
+        // identification draw — the same pattern the wander system uses. The draw
+        // happens once per contact at acquisition, not per tick.
+        std::mt19937& IdentifyRng() {
+            static std::mt19937 rng{ std::random_device{}() };
+            return rng;
+        }
 
         // Classify one opposing hull `other` against the observer's senses and
         // refresh its contact at the best rung it reaches this tick, resetting its
@@ -63,6 +78,12 @@ namespace naval {
                 if (!c.hasPos) {
                     c.lastPos = otherPos;
                     c.hasPos = true;
+                    // First fix on this track: draw the class-resolve threshold it
+                    // will have to dwell past. Drawn once here, so the contact keeps
+                    // the same target for the life of the track rather than rerolling
+                    // it each tick and never converging.
+                    std::uniform_real_distribution<float> dist(kIdentifyMinS, kIdentifyMaxS);
+                    c.identifyThresholdS = dist(IdentifyRng());
                 } else {
                     c.velocity += (1.0f / kVelTauS) * (otherPos - c.lastPos);
                     c.lastPos = otherPos;
@@ -73,7 +94,7 @@ namespace naval {
                 if (c.dwell >= kMotionResolveS) {
                     c.motionKnown = true;
                 }
-                if (c.dwell >= kIdentifyDwellS) {
+                if (c.dwell >= c.identifyThresholdS) {
                     c.identified = true;
                 }
                 c.level = c.identified ? DetectLevel::Identified : DetectLevel::Ranged;
