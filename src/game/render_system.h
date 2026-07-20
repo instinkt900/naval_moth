@@ -16,7 +16,10 @@ namespace naval {
     // Update() drives the simulation systems.
 
     // A ship's weapon firing arcs, brightening when a target sits inside one.
-    void DrawArcs(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
+    // forceAll draws every battery mount's arc regardless of its unit's per-unit
+    // Arcs toggle — used for the enemy-arc overlay, which the player controls only
+    // through the global "Show enemy arcs" debug toggle, not per unit.
+    void DrawArcs(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship, bool forceAll = false);
 
     // Debug preview of a ship's weapon spread: for each weapon with showSpread on
     // and a live target, a line to its aim point and the disc its shots may land

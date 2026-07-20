@@ -348,11 +348,10 @@ namespace naval {
         int salvoSize = 1;
 
         // Whether this unit's weapons draw their firing arcs. Purely a display
-        // toggle — every unit's arcs are on by default (see render_system), and the
-        // player switches a unit's off to declutter the view, since with no
-        // enable/disable there is otherwise nothing to hide an idle arc. Scoped to
-        // the unit, so a group's arcs toggle together.
-        bool showArc = true;
+        // toggle — off by default to keep the view uncluttered, and the player
+        // switches a unit's on when it wants to see where the guns can bear.
+        // Scoped to the unit, so a group's arcs toggle together.
+        bool showArc = false;
     };
 
     // A ship's fire control: its fire units. Every battery mount is on exactly one
@@ -478,6 +477,30 @@ namespace naval {
         b2Vec2 lastPos{ 0.0f, 0.0f };
         bool hasPos = false;
 
+        // The contact's estimated velocity, built up by tracking rather than read
+        // off the hull — an active fix gives a position each tick, and a run of
+        // them differenced over time betrays the course and speed (an alpha-beta
+        // tracker in UpdateSensors, converging over a few tens of seconds, so a
+        // freshly acquired contact's vector starts soft and firms as it is held).
+        // It drives three things: the dead reckoning that carries a positioned
+        // ghost forward once its fix goes stale (lastPos drifts on it each tick, so
+        // a lost radar contact coasts on its last-known course instead of freezing),
+        // the firing solution's lead, and the course tick/readout — whose heading is
+        // the velocity's own direction, the only "heading" a radar ever measures
+        // (aspect off the track, not the bow). Reading it off the snapshot rather
+        // than the entity is what stops a radar-off contact leaking the truth as it
+        // fades.
+        b2Vec2 velocity{ 0.0f, 0.0f };
+
+        // Whether the velocity estimate has been tracked long enough to trust — the
+        // gate the course tick and the Target list's motion read behind, set once
+        // the contact has been positionally held for kMotionResolveS. Sticky like
+        // `identified`, and reached well before it: a radar track yields a course
+        // and speed within tens of seconds, long before the minutes of hold that
+        // classify the hull, so the plot shows where a contact is going before it
+        // shows what it is.
+        bool motionKnown = false;
+
         // Seconds since the contact was last detected at *any* rung (bearing,
         // ranged or visual). Zero on any tick a detection refreshes it; it climbs
         // once the contact drops out of all reach. Governs whether the track is
@@ -496,15 +519,17 @@ namespace naval {
         // retention.
         float fixStaleness = 0.0f;
 
-        // Class-classification state. `identified` is sticky once earned — held
-        // long enough or seen close enough, the contact's class, heading and speed
-        // become known and stay known for as long as the track lives, so a brief
-        // downgrade to a bearing does not un-learn what it is. `dwell` is the
-        // seconds of positional hold accumulated toward that, counting only the
+        // Class-classification state. `identified` is sticky once earned: seen
+        // inside visual range it resolves at once, else it takes kIdentifyDwellS of
+        // radar hold — minutes, not the tens of seconds motion takes — and then
+        // stays known for as long as the track lives, so a brief downgrade to a
+        // bearing does not un-learn what it is. `dwell` is the seconds of positional
+        // hold accumulated toward both that and `motionKnown`, counting only the
         // ticks the contact is actually fixed (Ranged or Visual) — a bearing gives
         // no position and does not advance it. Until identified the Target window
-        // reads the contact as Unknown with its speed and heading masked, and the
-        // plot marks it with an open rather than a filled blip.
+        // reads the contact's class as Unknown and the plot marks it with an open
+        // rather than a filled blip; its course, though, shows as soon as
+        // motionKnown, ahead of the class (see velocity).
         float dwell = 0.0f;
         bool identified = false;
     };

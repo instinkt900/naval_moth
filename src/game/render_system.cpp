@@ -271,6 +271,26 @@ namespace naval {
             graphics.DrawLineF(pts[3], pts[0]);
         };
 
+        // A short stalk struck out from a blip along the contact's tracked course —
+        // the same read as own ship's mark and the TMA course stalk, so a tracked
+        // contact shows which way it is making, not only where it is. The direction
+        // is the estimated velocity's, the only heading a radar yields (see Contact),
+        // taken off the snapshot and never the live hull — so a stale ghost points
+        // the way it was last making, not where it has since turned unobserved. Only
+        // drawn once the motion has resolved (its caller gates on that) and the
+        // contact is actually under way; a dead-in-the-water contact carries none.
+        // Screen-space pixels like the diamond, so it holds its length at any zoom.
+        constexpr float kBlipStalkPx = 14.0f;
+        constexpr float kMinCourseSpeedMps = 0.5f; // below this the contact reads as stopped, no course stalk
+        auto drawHeading = [&](moth_ui::FloatVec2 p, b2Vec2 vel) {
+            if (vel.Length() < kMinCourseSpeedMps) {
+                return;
+            }
+            float const angle = std::atan2(vel.y, vel.x);
+            graphics.DrawLineF(p, { p.x + (kBlipStalkPx * std::cos(angle)),
+                                    p.y + (kBlipStalkPx * std::sin(angle)) });
+        };
+
         // Active radar, only while radiating: its reach ring, and a live blip over
         // every fresh contact the sweep paints. A contact that has closed into
         // visual range keeps its mark atop its hull, so the plot stays complete and
@@ -287,7 +307,11 @@ namespace naval {
                 if (!contact.hasPos || contact.fixStaleness != 0.0f) {
                     continue;
                 }
-                drawDiamond(camera.WorldToScreen(contact.lastPos), contact.identified);
+                moth_ui::FloatVec2 const blipPx = camera.WorldToScreen(contact.lastPos);
+                drawDiamond(blipPx, contact.identified);
+                if (contact.motionKnown) {
+                    drawHeading(blipPx, contact.velocity);
+                }
             }
         }
 
@@ -309,7 +333,11 @@ namespace naval {
             float const life = std::clamp(1.0f - (contact.fixStaleness / kContactDecayS), 0.0f, 1.0f);
             graphics.SetColor(moth_ui::Color{ kStaleContactColor.r, kStaleContactColor.g,
                                               kStaleContactColor.b, kStaleContactColor.a * life });
-            drawDiamond(camera.WorldToScreen(contact.lastPos), contact.identified);
+            moth_ui::FloatVec2 const blipPx = camera.WorldToScreen(contact.lastPos);
+            drawDiamond(blipPx, contact.identified);
+            if (contact.motionKnown) {
+                drawHeading(blipPx, contact.velocity);
+            }
         }
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
@@ -420,7 +448,7 @@ namespace naval {
         graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
     }
 
-    void DrawArcs(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship) {
+    void DrawArcs(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship, bool forceAll) {
         auto const* armament = registry.try_get<Armament>(ship);
         if (armament == nullptr) {
             return;
@@ -453,7 +481,7 @@ namespace naval {
             return false;
         };
         for (auto const& weapon : armament->weapons) {
-            bool const shown = weapon.pointDefense ? weapon.enabled : unitShowsArc(weapon.channel);
+            bool const shown = weapon.pointDefense ? weapon.enabled : (forceAll || unitShowsArc(weapon.channel));
             if (!shown) {
                 continue;
             }

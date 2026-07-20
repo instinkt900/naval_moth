@@ -378,15 +378,14 @@ namespace naval {
             }
             return belief;
         }
-        // Positioned: tracked accurately while fresh, frozen at the last fix once
-        // stale (no current velocity to lead with).
-        if (contact.fixStaleness == 0.0f) {
-            b2Body* body = registry.get<Physics>(target).body;
-            belief.pos = body->GetPosition();
-            belief.vel = body->GetLinearVelocity();
-        } else {
-            belief.pos = contact.lastPos;
-        }
+        // Positioned: read the snapshot, never the live hull. lastPos is the exact
+        // fix, dead-reckoned forward once it goes stale (see UpdateSensors); velocity
+        // is the tracked estimate — soft on a freshly acquired contact and firming as
+        // it is held. So gunnery leads on what the track actually knows and a lost
+        // contact coasts on its last-known course, with no truth leaking through once
+        // radar is off.
+        belief.pos = contact.lastPos;
+        belief.vel = contact.velocity;
         belief.ok = true;
         return belief;
     }
@@ -418,7 +417,8 @@ namespace naval {
         return best;
     }
 
-    void UpdateWeapons(entt::registry& registry, Audio& audio, CameraShake& shake, float dt) {
+    void UpdateWeapons(entt::registry& registry, Audio& audio, CameraShake& shake,
+                       Vantage const& view, float dt) {
         // Buffer projectiles and create them after iterating, so we never touch
         // pools while a view over them is live. Point defence adds two more
         // deferred effects: munitions it shot down (destroyed after the loop, as
@@ -628,9 +628,14 @@ namespace naval {
                         if (RandomUnit() < hitChance) {
                             warhead.health -= weapon.damage;
                             if (warhead.health <= 0.0f) {
-                                audio.Play(warhead.impactSound, warhead.position);
-                                shake.Add(warhead.impactShakeM, warhead.position);
-                                splashes.push_back(Splash{ warhead.position, 0.0f, warhead.radiusM });
+                                // The cook-off is witnessed only within visual range;
+                                // beyond it the missile is downed silently, though it
+                                // is downed all the same.
+                                if (view.Sees(warhead.position)) {
+                                    audio.Play(warhead.impactSound, warhead.position);
+                                    shake.Add(warhead.impactShakeM, warhead.position);
+                                    splashes.push_back(Splash{ warhead.position, 0.0f, warhead.radiusM });
+                                }
                                 downedMunitions.push_back(munition);
                             }
                         }
@@ -966,7 +971,7 @@ namespace naval {
     }
 
     void UpdateProjectiles(entt::registry& registry, Audio& audio, CameraShake& shake,
-                           Terrain const& terrain, float dt) {
+                           Terrain const& terrain, Vantage const& view, float dt) {
         std::vector<entt::entity> expired;   // projectiles to remove
         std::vector<entt::entity> destroyed; // hulls whose health reached zero
         std::vector<Splash> splashes;        // splashes for shots that fell short of any hull
@@ -974,9 +979,9 @@ namespace naval {
         // health; a hull with no Health is simply not destructible. Removals are
         // deferred until after iterating so we never touch pools (entt views or
         // the Box2D world) while a view over them is live.
-        auto view = registry.view<Projectile>();
-        for (auto entity : view) {
-            auto& projectile = view.get<Projectile>(entity);
+        auto projectiles = registry.view<Projectile>();
+        for (auto entity : projectiles) {
+            auto& projectile = projectiles.get<Projectile>(entity);
 
             // A guided munition steers and accelerates before it is integrated. It
             // turns its heading toward the homing target at its turn rate and ramps
@@ -1032,8 +1037,12 @@ namespace naval {
                 if (projectile.armDistance > 0.0f) {
                     continue;
                 }
-                audio.Play(projectile.impactSound, projectile.position);
-                shake.Add(projectile.impactShakeM, projectile.position);
+                // The impact is seen and heard only within visual range; a hit out
+                // in the fog lands unwitnessed, but its damage below still tells.
+                if (view.Sees(projectile.position)) {
+                    audio.Play(projectile.impactSound, projectile.position);
+                    shake.Add(projectile.impactShakeM, projectile.position);
+                }
                 // Apply damage only while the hull is still alive, so a hull is
                 // queued for destruction exactly once — on the hit that crosses
                 // zero — however many shots land the same tick.
@@ -1061,7 +1070,10 @@ namespace naval {
             // so it simply stops and vanishes with no surface splash or sound.
             if (projectile.remaining <= 0.0f) {
                 expired.push_back(entity);
-                if (!projectile.waterborne) {
+                // A miss splashes only where the player can see it; beyond visual
+                // range the shot just vanishes, no plume and no sound. (A waterborne
+                // munition never splashes on the surface at all.)
+                if (!projectile.waterborne && view.Sees(projectile.position)) {
                     splashes.push_back(Splash{ projectile.position, 0.0f, projectile.radiusM });
                     audio.Play(projectile.splashSound, projectile.position);
                 }

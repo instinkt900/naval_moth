@@ -10,11 +10,16 @@
 
 namespace naval {
     namespace {
-        // How a positional fix is classified into a known contact: held under a
-        // steady fix for long enough, or seen close enough that even a first look
-        // resolves the class.
-        constexpr float kIdentifyDwellS = 8.0f;       // s of positional hold to classify a contact
-        constexpr float kIdentifyRangeFactor = 1.25f; // ...or at once within this multiple of visual range
+        // The dwell a positional fix must accumulate to resolve a contact. Motion
+        // (course and speed) falls out of tracking first — a run of fixes
+        // differenced over kMotionResolveS betrays where the contact is heading —
+        // while the class settles far more slowly, over the minutes of unbroken hold
+        // kIdentifyDwellS asks. Seeing the hull (inside visual range) shortcuts both
+        // at once; a radar contact earns them only by being held, with no close-range
+        // shortcut, so a distant blip is a position long before it is a known ship.
+        constexpr float kMotionResolveS = 3.0f;   // s of hold before the velocity estimate is trusted (course shown)
+        constexpr float kIdentifyDwellS = 180.0f;  // s of hold before the class resolves (~3 min)
+        constexpr float kVelTauS = 8.0f;           // s; velocity-tracker time constant (alpha-beta, beta = dt/tau)
 
         // Classify one opposing hull `other` against the observer's senses and
         // refresh its contact at the best rung it reaches this tick, resetting its
@@ -23,33 +28,52 @@ namespace naval {
         // held. `otherSensors` is the hull's own Sensors (or null), needed only for
         // the passive rung, which depends on the *other* ship radiating.
         void RefreshContact(ContactPicture& picture, entt::entity other, b2Vec2 otherPos,
-                            b2Vec2 delta, float d, float dt, Sensors const& sensors,
-                            Sensors const* otherSensors) {
-            // Seen outright inside visual range: the real hull, a fixed position and
-            // an immediate identification. A positional fix, so both clocks reset.
+                            b2Vec2 otherVel, b2Vec2 delta, float d, float dt,
+                            Sensors const& sensors, Sensors const* otherSensors) {
+            // Seen outright inside visual range: the real hull, full truth at once —
+            // a fixed position, its true motion (no tracking lag when you can watch
+            // it), and an immediate identification. A positional fix, so both clocks
+            // reset.
             if (d <= sensors.visualRangeM) {
                 Contact& c = picture.contacts[other];
                 c.level = DetectLevel::Visual;
                 c.lastPos = otherPos;
                 c.hasPos = true;
+                c.velocity = otherVel;
+                c.motionKnown = true;
                 c.staleness = 0.0f;
                 c.fixStaleness = 0.0f;
                 c.dwell += dt;
                 c.identified = true;
                 return;
             }
-            // A ranged blip if the active radar is up and reaches it. Also a fix,
-            // which accrues dwell toward classifying the contact — held long enough
-            // under the fix, or close enough, and its class resolves (sticky once
-            // set). Until then the fix stays an unidentified Ranged one.
+            // A ranged blip if the active radar is up and reaches it. A fix gives a
+            // position each tick but not motion or identity outright: the velocity is
+            // tracked out of the run of fixes, and dwell accrues toward first the
+            // course (kMotionResolveS) and then, far later, the class (kIdentifyDwellS)
+            // — both sticky once earned. Until then it is an unidentified Ranged blip.
             if (sensors.activeOn && d <= sensors.activeRangeM) {
                 Contact& c = picture.contacts[other];
-                c.lastPos = otherPos;
-                c.hasPos = true;
+                // Track the fix. The first one only seeds a position — there is no
+                // previous fix to difference. After that the position snaps to the
+                // exact return while the velocity is nudged toward the one-tick
+                // prediction error: an alpha-beta tracker (alpha = 1, beta = dt/kVelTauS)
+                // whose estimate converges over ~kVelTauS. The prediction it corrects
+                // against is lastPos as the ageing pass dead-reckoned it this tick.
+                if (!c.hasPos) {
+                    c.lastPos = otherPos;
+                    c.hasPos = true;
+                } else {
+                    c.velocity += (1.0f / kVelTauS) * (otherPos - c.lastPos);
+                    c.lastPos = otherPos;
+                }
                 c.staleness = 0.0f;
                 c.fixStaleness = 0.0f;
                 c.dwell += dt;
-                if (c.dwell >= kIdentifyDwellS || d <= sensors.visualRangeM * kIdentifyRangeFactor) {
+                if (c.dwell >= kMotionResolveS) {
+                    c.motionKnown = true;
+                }
+                if (c.dwell >= kIdentifyDwellS) {
                     c.identified = true;
                 }
                 c.level = c.identified ? DetectLevel::Identified : DetectLevel::Ranged;
@@ -107,17 +131,27 @@ namespace naval {
             // left aged is a contact that has dropped a rung or dropped out, carried
             // on from its last-known position rather than erased outright.
             for (auto& entry : picture.contacts) {
-                entry.second.staleness += dt;
-                entry.second.fixStaleness += dt;
+                Contact& c = entry.second;
+                c.staleness += dt;
+                c.fixStaleness += dt;
+                // Dead-reckon a positioned ghost forward on its last-known velocity,
+                // so a lost fix coasts on its course rather than freezing on the
+                // water. A contact re-fixed this tick has its lastPos overwritten by
+                // the fix below, so only genuinely stale tracks actually drift.
+                if (c.hasPos) {
+                    c.lastPos += dt * c.velocity;
+                }
             }
 
             for (auto other : registry.view<Physics, Combatant>()) {
                 if (other == self || registry.get<Combatant>(other).faction == faction) {
                     continue;
                 }
-                b2Vec2 const otherPos = registry.get<Physics>(other).body->GetPosition();
+                b2Body* const otherBody = registry.get<Physics>(other).body;
+                b2Vec2 const otherPos = otherBody->GetPosition();
                 b2Vec2 const delta = otherPos - selfPos;
-                RefreshContact(picture, other, otherPos, delta, delta.Length(), dt, sensors,
+                RefreshContact(picture, other, otherPos, otherBody->GetLinearVelocity(),
+                               delta, delta.Length(), dt, sensors,
                                registry.try_get<Sensors>(other));
             }
 

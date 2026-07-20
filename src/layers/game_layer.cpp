@@ -222,8 +222,12 @@ namespace naval {
         UpdateAggro(m_registry, dt);
         UpdateWander(m_registry, m_terrain, dt);
         UpdatePropulsion(m_registry, dt);
-        UpdateWeapons(m_registry, m_audio, m_shake, dt);
-        UpdateProjectiles(m_registry, m_audio, m_shake, m_terrain, dt);
+        // What the player's ship can see: shot effects (impacts, splashes) beyond
+        // this are raised silently, matching sight to what is on the water.
+        Vantage const view{ m_registry.get<Physics>(m_ship).body->GetPosition(),
+                            m_registry.get<Sensors>(m_ship).visualRangeM };
+        UpdateWeapons(m_registry, m_audio, m_shake, view, dt);
+        UpdateProjectiles(m_registry, m_audio, m_shake, m_terrain, view, dt);
         UpdateSplashes(m_registry, dt);
         m_world.Step(dt, 8, 3);
 
@@ -313,11 +317,14 @@ namespace naval {
         // armament) and can be hidden even when seen via the debug toggle; the
         // player's own always draw.
         for (auto ship : m_registry.view<Physics, Armament>()) {
-            if (m_registry.get<Combatant>(ship).faction == Faction::Enemy &&
-                (!m_showEnemyArcs || !SeesHull(picture, ship))) {
+            bool const enemy = m_registry.get<Combatant>(ship).faction == Faction::Enemy;
+            if (enemy && (!m_showEnemyArcs || !SeesHull(picture, ship))) {
                 continue;
             }
-            DrawArcs(m_graphics, m_registry, m_camera, ship);
+            // Enemy arcs are the debug overlay gated only by the toggle above, so
+            // draw every mount; the player's own arcs still honour the per-unit
+            // Arcs toggles in the Target window.
+            DrawArcs(m_graphics, m_registry, m_camera, ship, /*forceAll=*/enemy);
         }
         DrawTarget(m_graphics, m_registry, m_camera, m_ship);
         DrawTargetMarker(m_graphics, m_registry, m_camera, m_ship);
@@ -345,14 +352,6 @@ namespace naval {
         ImGui::Begin("Aggro (debug)");
         ImGui::SliderFloat("Aggro range (m)", &tuning.aggroRangeM, 100.0f, 4000.0f, "%.0f");
         ImGui::SliderFloat("Disengage range (m)", &tuning.disengageRangeM, 100.0f, 5000.0f, "%.0f");
-        ImGui::SliderFloat("Standoff (frac)", &tuning.standoffFrac, 0.1f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Approach band (m)", &tuning.approachBandM, 50.0f, 2000.0f, "%.0f");
-        ImGui::SliderFloat("Helm gain", &tuning.helmGain, 0.1f, 8.0f, "%.2f");
-        ImGui::SliderFloat("Throttle gain", &tuning.throttleGain, 0.0005f, 0.02f, "%.4f");
-        ImGui::SliderFloat("Backoff weight", &tuning.backoffWeight, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Steerage throttle", &tuning.steerageThrottle, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Steerage error (rad)", &tuning.steerageErrorRad, 0.05f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Arc switch margin (rad)", &tuning.switchMarginRad, 0.0f, 1.5f, "%.2f");
         ImGui::Checkbox("Show aggro rings", &tuning.showRings);
         ImGui::Checkbox("Show enemy arcs", &m_showEnemyArcs);
         ImGui::End();
@@ -542,12 +541,16 @@ namespace naval {
                     b2Vec2 const to = belief.pos - shipPos;
                     brgRad = std::atan2(to.y, to.x);
                     rng = fmt::format("{}{:.1f} km", belief.estimate ? "~" : "", to.Length() / 1000.0f);
-                    if (c.identified || belief.estimate) {
+                    if (belief.estimate || c.motionKnown) {
+                        // Course and speed off the snapshot's tracked velocity, never
+                        // the live hull — a radar fix once its motion has resolved, a
+                        // passive TMA fix from its estimate — so a stale contact shows
+                        // the course it was last making, not where it has since turned
+                        // unobserved. A contact still being tracked toward a solution
+                        // shows range and bearing only, the way course lags a fresh
+                        // fix in reality.
                         float const spdKn = belief.vel.Length() * kMetresPerSecToKnots;
-                        float const crsDeg =
-                            belief.estimate
-                                ? Norm360(std::atan2(belief.vel.y, belief.vel.x) * moth_ui::kRadToDeg)
-                                : Norm360(m_registry.get<Physics>(entity).body->GetAngle() * moth_ui::kRadToDeg);
+                        float const crsDeg = Norm360(std::atan2(belief.vel.y, belief.vel.x) * moth_ui::kRadToDeg);
                         motion = fmt::format("crs {:03.0f}  {:.0f} kn", crsDeg, spdKn);
                     }
                 }
@@ -808,7 +811,7 @@ namespace naval {
         // fire (release to the nearest foe the guns can bear on). Fire is never
         // disabled for want of a gun bearing — ordering fire while manoeuvring onto
         // the mark is the point, and the guns join in as their arcs come on.
-        auto orderButtons = [&](FireChannel& channel) {
+        auto orderButtons = [&](FireChannel& channel, Weapon* weapon = nullptr) {
             if (ImGui::Button(channel.firing ? "Hold" : "Fire")) {
                 channel.firing = !channel.firing;
             }
@@ -826,6 +829,13 @@ namespace naval {
             // declutter the view.
             ImGui::SameLine();
             ImGui::Checkbox("Arcs", &channel.showArc);
+            // A lone gun's spread-disc preview sits beside its arc toggle, the two
+            // display toggles together. (A group passes no weapon — its members carry
+            // their own spread toggle in the member list.)
+            if (weapon != nullptr && weapon->kind == WeaponKind::Gun) {
+                ImGui::SameLine();
+                ImGui::Checkbox("Show spread", &weapon->showSpread);
+            }
             // How many rounds a Salvo releases from each weapon on the unit — a gun
             // ripples that many shots over its cooldown, a launcher fires that many
             // tubes (capped at those loaded).
@@ -960,8 +970,15 @@ namespace naval {
                 Weapon& weapon = weapons[wi];
                 ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
                 targetDropdown(channel);
-                weaponExtras(weapon);
-                orderButtons(channel);
+                orderButtons(channel, &weapon);
+                // A launcher shows its loaded munition; a gun's spread toggle now
+                // rides the order row above, beside the arc toggle.
+                if (weapon.kind != WeaponKind::Gun && !weapon.munitionName.empty()) {
+                    ImGui::TextDisabled("(%s)", weapon.munitionName.c_str());
+                }
+                // Each weapon shows its engagement range. (Skipped for groups, whose
+                // members may reach differently.)
+                ImGui::Text("Range: %.0f m", weapon.range);
                 weaponStatus(weapon, channel);
 
                 // Fold this mount into a group — an existing one, or a fresh group
