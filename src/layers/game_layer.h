@@ -8,6 +8,7 @@
 
 #include <box2d/box2d.h>
 #include <entt/entt.hpp>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -18,6 +19,8 @@
 
 namespace moth_graphics::graphics {
     class IGraphics;
+    class AssetContext;
+    class IFont;
 }
 
 namespace naval {
@@ -29,7 +32,8 @@ namespace naval {
     // Click anywhere to command the ship to that point.
     class GameLayer : public moth_ui::Layer {
     public:
-        GameLayer(moth_graphics::graphics::IGraphics& graphics, int widthPx, int heightPx);
+        GameLayer(moth_graphics::graphics::IGraphics& graphics,
+                  moth_graphics::graphics::AssetContext& assetContext, int widthPx, int heightPx);
 
         bool OnEvent(moth_ui::Event const& event) override;
         void Update(uint32_t ticks) override;
@@ -55,6 +59,19 @@ namespace naval {
         // contact picture.
         void DrawMapLayer(ContactPicture const& picture);
         void DrawRadarLayer();
+
+        // Text labels beside each radar blip — the call-sign and readout the
+        // Contacts window lists (class, bearing, range, course, speed), drawn on
+        // the plot with m_labelFont so the tactical picture reads without the
+        // table. Mirrors DrawContacts' blip gating, so a label appears wherever a
+        // blip does and nowhere else; a no-op if the font failed to load.
+        void DrawContactLabels();
+
+        // Bring m_contactLabels into step with the live contact picture — drop
+        // call-signs for contacts no longer held, hand each newly held contact the
+        // lowest free slot. Run once at the top of Draw() because both the plot
+        // labels and the Contacts table read the slots, and the plot draws first.
+        void SyncContactLabels();
         void DrawTacticalLayer(ContactPicture const& picture);
         void DrawDebugLayer();
 
@@ -112,6 +129,11 @@ namespace naval {
         void DrawLayersPanel();
 
         moth_graphics::graphics::IGraphics& m_graphics;
+        // The font the radar-contact labels are drawn in, loaded once at
+        // construction and shared by the FontFactory. May be null if the file
+        // fails to load, in which case the plot draws unlabelled (see
+        // DrawContactLabels) — a missing label font degrades, it does not throw.
+        std::shared_ptr<moth_graphics::graphics::IFont> m_labelFont;
         Camera m_camera;
         // The camera's shake. Owns the jolt; m_camera only carries the offset it
         // is handed each tick, for drawing.

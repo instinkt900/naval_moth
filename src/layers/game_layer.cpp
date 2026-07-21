@@ -12,11 +12,16 @@
 #include "game/wake_system.h"
 #include "game/wander_system.h"
 
+#include <moth_graphics/graphics/asset_context.h>
+#include <moth_graphics/graphics/font_factory.h>
+#include <moth_graphics/graphics/igraphics.h>
 #include <moth_ui/events/event_dispatch.h>
+#include <moth_ui/utils/rect.h>
 #include <moth_ui/utils/transform.h>
 
 #include <imgui.h>
 #include <spdlog/fmt/fmt.h>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cmath>
@@ -47,9 +52,21 @@ namespace naval {
             }
             return "Blip " + letters;
         }
+
+        // The radar-contact label font: a monospace-ish display face under
+        // assets/fonts, sized small so a screenful of blips stays legible without
+        // the labels overrunning each other.
+        constexpr char const* kLabelFontPath = "assets/fonts/Roboto/Roboto-Regular.ttf";
+        constexpr int kLabelFontSize = 11;
+
+        // Label text, following the blip colours: a fresh return in the same teal
+        // the diamond is drawn in, a decaying ghost greyed like its stale diamond.
+        const moth_ui::Color kLabelColor{ 0.55f, 0.90f, 0.80f, 0.95f };
+        const moth_ui::Color kStaleLabelColor{ 0.60f, 0.64f, 0.66f, 0.70f };
     }
 
-    GameLayer::GameLayer(moth_graphics::graphics::IGraphics& graphics, int widthPx, int heightPx)
+    GameLayer::GameLayer(moth_graphics::graphics::IGraphics& graphics,
+                         moth_graphics::graphics::AssetContext& assetContext, int widthPx, int heightPx)
         : m_graphics(graphics)
         , m_world(b2Vec2{ 0.0f, 0.0f }) // top-down: no gravity
         , m_terrain(m_world, 1337u, false) // open water while developing the sensor work; pass true to restore land
@@ -61,6 +78,14 @@ namespace naval {
         // Before any spawn: a ship resolves the sound ids in its definitions
         // into handles as it is built, which needs the bank already loaded.
         m_audio.Load(m_db);
+
+        // The radar-contact label font. Loaded once and cached by the FontFactory;
+        // a failure warns and leaves m_labelFont null, so the plot simply draws
+        // unlabelled rather than the game refusing to start over a missing face.
+        m_labelFont = assetContext.GetFontFactory().GetFont(kLabelFontPath, kLabelFontSize);
+        if (m_labelFont == nullptr) {
+            spdlog::warn("failed to load contact-label font '{}'; blips will be unlabelled", kLabelFontPath);
+        }
 
         // Player at the view centre; enemies scattered across the surrounding
         // water for the player to hunt down.
@@ -279,6 +304,11 @@ namespace naval {
         // contact it actually holds — so the layers that show enemies take it (see
         // UpdateSensors).
         auto const& picture = m_registry.get<ContactPicture>(m_ship);
+
+        // Assign call-signs before anything reads them: the radar layer's blip
+        // labels draw first, ahead of the Contacts table that also shows them.
+        SyncContactLabels();
+
         if (m_showMapLayer) {
             DrawMapLayer(picture);
         }
@@ -326,8 +356,9 @@ namespace naval {
     void GameLayer::DrawRadarLayer() {
         // The player's sensor picture over the map: passive ESM bearing lines
         // (always), and the active radar's reach ring and contact blips while
-        // radiating.
+        // radiating, each blip captioned with its call-sign and readout.
         DrawContacts(m_graphics, m_registry, m_camera, m_ship);
+        DrawContactLabels();
     }
 
     void GameLayer::DrawTacticalLayer(ContactPicture const& picture) {
@@ -483,14 +514,14 @@ namespace naval {
         ImGui::End();
     }
 
-    void GameLayer::DrawContactList() {
+    void GameLayer::SyncContactLabels() {
         auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
 
-        // Reconcile the call-sign map with the live picture before drawing. Drop
-        // labels whose contact the ship no longer holds first, so a freed slot can
-        // be reused; then hand any newly held contact the lowest free slot. Kept in
-        // step with the picture here rather than in the sensor system because a
-        // name is a presentation concern, not a measurement.
+        // Reconcile the call-sign map with the live picture. Drop labels whose
+        // contact the ship no longer holds first, so a freed slot can be reused;
+        // then hand any newly held contact the lowest free slot. Kept in step with
+        // the picture here rather than in the sensor system because a name is a
+        // presentation concern, not a measurement.
         for (auto it = m_contactLabels.begin(); it != m_contactLabels.end();) {
             it = contacts.count(it->first) != 0 ? std::next(it) : m_contactLabels.erase(it);
         }
@@ -511,6 +542,110 @@ namespace naval {
             }
             m_contactLabels.emplace(entry.first, slot);
         }
+    }
+
+    void GameLayer::DrawContactLabels() {
+        // Off entirely if the font never loaded — the diamonds still draw, just
+        // without captions (see the constructor's warning).
+        if (m_labelFont == nullptr) {
+            return;
+        }
+
+        auto const* sensors = m_registry.try_get<Sensors>(m_ship);
+        if (sensors == nullptr) {
+            return;
+        }
+        auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
+        b2Vec2 const shipPos = m_registry.get<Physics>(m_ship).body->GetPosition();
+
+        constexpr float kMetresPerSecToKnots = 1.94384f;
+        int const lineH = m_labelFont->GetLineHeight();
+        constexpr int kLabelOffsetPx = 12; // clear of the 8px diamond and its course stalk
+        constexpr int kLabelWidthPx = 400; // generous; the text is left-aligned within it
+
+        m_graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        m_graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+
+        // One contact's caption, anchored just right of its blip and centred on it
+        // vertically. Reads the same rungs the Contacts table does — call-sign and
+        // class, then bearing (always known), and range/course/speed only once a
+        // fix or a solved estimate has earned them (KnownAim) — so the plot never
+        // shows more than the sensors have. `dim` greys a stale ghost's caption the
+        // way its diamond is greyed.
+        auto caption = [&](entt::entity entity, Contact const& c, bool dim) {
+            auto const lit = m_contactLabels.find(entity);
+            if (lit == m_contactLabels.end()) {
+                return; // synced in Draw(); absent only for a contact not held
+            }
+
+            std::string name = BlipLabel(lit->second);
+            if (c.identified) {
+                auto const* id = m_registry.try_get<Identity>(entity);
+                name += id != nullptr ? "  " + id->name : "  contact";
+            }
+
+            AimBelief const belief = KnownAim(m_registry, m_ship, entity);
+            float brgRad = c.bearing;
+            std::string rngLine;
+            std::string motionLine;
+            if (belief.ok) {
+                b2Vec2 const to = belief.pos - shipPos;
+                brgRad = std::atan2(to.y, to.x);
+                rngLine = fmt::format("brg {:03.0f}  rng {}{:.1f}km", Norm360(brgRad * moth_ui::kRadToDeg),
+                                      belief.estimate ? "~" : "", to.Length() / 1000.0f);
+                if (belief.estimate || c.motionKnown) {
+                    float const spdKn = belief.vel.Length() * kMetresPerSecToKnots;
+                    float const crsDeg = Norm360(std::atan2(belief.vel.y, belief.vel.x) * moth_ui::kRadToDeg);
+                    motionLine = fmt::format("crs {:03.0f}  {:.0f}kn", crsDeg, spdKn);
+                }
+            } else {
+                rngLine = fmt::format("brg {:03.0f}", Norm360(brgRad * moth_ui::kRadToDeg));
+            }
+
+            moth_ui::FloatVec2 const p = m_camera.WorldToScreen(c.lastPos);
+            int const x = static_cast<int>(p.x) + kLabelOffsetPx;
+            int const yTop = static_cast<int>(p.y) - lineH; // block straddles the blip
+
+            m_graphics.SetColor(dim ? kStaleLabelColor : kLabelColor);
+            auto drawLine = [&](std::string const& s, int row) {
+                if (!s.empty()) {
+                    m_graphics.DrawText(s, *m_labelFont,
+                                        moth_ui::MakeRect(x, yTop + (row * lineH), kLabelWidthPx, lineH));
+                }
+            };
+            drawLine(name, 0);
+            drawLine(rngLine, 1);
+            drawLine(motionLine, 2);
+        };
+
+        // Mirror DrawContacts' blip gating so a caption sits on every blip and
+        // nowhere else. Live returns caption only while radiating; decaying ghosts
+        // caption whatever the radar is doing, and a contact seen to die is left to
+        // its wreck rather than ghosted.
+        if (sensors->activeOn) {
+            for (auto const& entry : contacts) {
+                Contact const& c = entry.second;
+                if (c.hasPos && c.fixStaleness == 0.0f) {
+                    caption(entry.first, c, /*dim=*/false);
+                }
+            }
+        }
+        for (auto const& entry : contacts) {
+            Contact const& c = entry.second;
+            if (!c.hasPos || c.fixStaleness <= 0.0f) {
+                continue;
+            }
+            if (m_registry.valid(entry.first) && m_registry.all_of<Sinking>(entry.first)) {
+                continue;
+            }
+            caption(entry.first, c, /*dim=*/true);
+        }
+
+        m_graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
+    }
+
+    void GameLayer::DrawContactList() {
+        auto const& contacts = m_registry.get<ContactPicture>(m_ship).contacts;
 
         ImGui::Begin("Contacts");
         if (contacts.empty()) {

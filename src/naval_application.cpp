@@ -2,6 +2,7 @@
 
 #include "layers/game_layer.h"
 
+#include <moth_graphics/graphics/surface_context.h>
 #include <moth_graphics/platform/window.h>
 
 #include <memory>
@@ -18,6 +19,8 @@ namespace naval {
 
     void NavalApplication::PostCreateWindow() {
         m_window->PushLayer(std::make_unique<GameLayer>(
-            m_window->GetGraphics(), kLogicalWidth, kLogicalHeight));
+            m_window->GetGraphics(),
+            m_window->GetSurfaceContext().GetAssetContext(),
+            kLogicalWidth, kLogicalHeight));
     }
 }
