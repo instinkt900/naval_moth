@@ -620,7 +620,13 @@ namespace naval {
                     // this call — see Audio::HoldLoop). Held here, before the
                     // cooldown gate, because the whirr is continuous while the
                     // per-burst one-shot below is not.
-                    if (weapon.acquired && weapon.fireSoundLoops) {
+                    // The burst is seen and heard only within visual range, like a
+                    // shell's impact or a downed warhead's cook-off: beyond it the
+                    // CIWS still engages — the whirr, report and shake are simply
+                    // withheld, so a distant duel plays out silently. The loop, held
+                    // per tick, stops itself the moment this goes false.
+                    bool const witnessed = view.Sees(mountPos);
+                    if (weapon.acquired && weapon.fireSoundLoops && witnessed) {
                         audio.HoldLoop(weapon.fireSound, LoopKey(shooter, weaponIndex), mountPos);
                     }
 
@@ -638,11 +644,14 @@ namespace naval {
                     }
                     weapon.cooldownRemaining = weapon.cooldown;
                     // A looping fire sound is held above for the whole engagement;
-                    // only a one-shot report fires per burst here.
-                    if (!weapon.fireSoundLoops) {
+                    // only a one-shot report fires per burst here. Both it and the
+                    // shake are withheld beyond visual range (see witnessed above).
+                    if (!weapon.fireSoundLoops && witnessed) {
                         audio.Play(weapon.fireSound, mountPos);
                     }
-                    shake.Add(weapon.fireShakeM, mountPos);
+                    if (witnessed) {
+                        shake.Add(weapon.fireShakeM, mountPos);
+                    }
 
                     // Accuracy. Rather than sample a point in the spread disc and
                     // test overlap the way a gun's shell does, the hitscan burst

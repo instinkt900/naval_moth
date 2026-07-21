@@ -352,7 +352,16 @@ namespace naval {
         DrawTargetMarker(m_graphics, m_registry, m_camera, m_ship);
 
         DrawProjectiles(m_graphics, m_registry, m_camera);
+        // Point-defence tracers and muzzle flash show only within the player's visual
+        // range, like the shot effects and the CIWS report itself (see UpdateWeapons):
+        // a distant duel is fought unseen. The player's own mounts always draw (its
+        // hull sits at zero range from itself).
+        b2Vec2 const selfPos = m_registry.get<Physics>(m_ship).body->GetPosition();
+        float const visualRangeM = m_registry.get<Sensors>(m_ship).visualRangeM;
         for (auto ship : m_registry.view<Physics, Armament>()) {
+            if ((m_registry.get<Physics>(ship).body->GetPosition() - selfPos).Length() > visualRangeM) {
+                continue;
+            }
             DrawPointDefenseFire(m_graphics, m_registry, m_camera, ship);
         }
 
