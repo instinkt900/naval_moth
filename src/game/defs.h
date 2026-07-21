@@ -142,6 +142,14 @@ namespace naval::defs {
         float initialSpeed = 0.0f; // m/s it leaves a rail/canister at, along the launch bearing before acceleration builds; a VLS ignores it (leaves at rest)
         float damage = 0.0f;       // hit points removed from a hull it strikes
         float turnRate = 0.0f;     // radians/second its heading can steer toward the target (loaded from turnRateDegrees)
+        // Waypoint flight plans (missiles/torpedoes only). When flightPlan is set,
+        // this munition can be launched down an authored plan (which unlocks the
+        // plan dropdown in fire control); it flies the legs, then switches on its own
+        // seeker at seekerRangeM and homes the nearest contact within that range.
+        // A munition with flightPlan false ignores both and homes its target
+        // directly as before.
+        bool flightPlan = false;   // can this munition fly an authored waypoint plan?
+        float seekerRangeM = 0.0f; // metres: terminal radar range it acquires within once the plan is spent; 0 = no seeker
         // Warhead health a point-defence gun must whittle down to knock this
         // munition out of the sky. Air munitions only — a torpedo runs below the
         // reach of these guns. 0 (the default) leaves the munition impervious to

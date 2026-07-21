@@ -39,6 +39,12 @@ namespace naval {
     // showResolutions toggle in the shared TMA tuning.
     void DrawTmaOverlay(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer);
 
+    // The authored missile/torpedo flight plans in `viewer`'s library, drawn on the
+    // water as their legs and waypoint marks. `activePlanId` is the plan currently
+    // being authored (or -1), drawn highlighted so it stands out while the player
+    // clicks waypoints into it.
+    void DrawFlightPlans(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer, int activePlanId);
+
     // The dashed course line and marker for a ship's active move target — where
     // it is steering, as opposed to what it is shooting at (see DrawTargetMarker).
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);

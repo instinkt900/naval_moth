@@ -321,6 +321,48 @@ namespace naval {
             return registry.get<Combatant>(target).faction == enemyFaction;
         }
 
+        // The flight plan `id` in `shooter`'s library, or null if it has none, the
+        // id is -1 (no plan), or the plan was deleted. Read at launch to stamp a
+        // plan onto the munition.
+        FlightPlan const* FindPlan(entt::registry& registry, entt::entity shooter, int id) {
+            if (id < 0) {
+                return nullptr;
+            }
+            auto const* library = registry.try_get<FlightPlanLibrary>(shooter);
+            if (library == nullptr) {
+                return nullptr;
+            }
+            for (auto const& plan : library->plans) {
+                if (plan.id == id) {
+                    return &plan;
+                }
+            }
+            return nullptr;
+        }
+
+        // The nearest live hull of `faction` within `rangeM` of `pos` — the munition
+        // seeker's own radar sweep once its plan is spent. Scans true positions, as
+        // the enemy aggro does: a munition's seeker is its own sensor, not the
+        // launching ship's picture. Skips a hull already sinking so it homes a live
+        // target rather than a wreck.
+        entt::entity NearestSeekerTarget(entt::registry& registry, b2Vec2 pos, Faction faction,
+                                         float rangeM) {
+            entt::entity best = entt::null;
+            float bestDist = rangeM;
+            for (auto hull : registry.view<Physics, Renderable, Combatant>()) {
+                if (registry.get<Combatant>(hull).faction != faction ||
+                    registry.all_of<Sinking>(hull)) {
+                    continue;
+                }
+                float const d = (registry.get<Physics>(hull).body->GetPosition() - pos).Length();
+                if (d <= bestDist) {
+                    bestDist = d;
+                    best = hull;
+                }
+            }
+            return best;
+        }
+
         // Transition a destroyed hull into its sinking death sequence: retire it
         // from combat so nothing targets it or fires from it, cut its helm so the
         // wreck coasts to a stop under drag, and tag it Sinking for the sinking
@@ -731,10 +773,28 @@ namespace naval {
                         belief = AimBelief{};
                     }
                 }
+                // A plan-capable launcher with a plan selected launches fire-and-
+                // forget: it ignores any designated contact, aims the rail at the
+                // first waypoint purely so a trainable launcher slews somewhere
+                // sensible before release (a VLS ignores the lay), and its own seeker
+                // finds a mark at the plan's end. Guns and non-plan launches fall
+                // through unchanged. planForShot, carried down to the spawn below,
+                // both flags the launch and hands over the waypoints to stamp.
+                FlightPlan const* planForShot = nullptr;
+                if (channel != nullptr && channel->flightPlanId >= 0 &&
+                    weapon.kind != WeaponKind::Gun && weapon.munitionFlightPlan) {
+                    FlightPlan const* plan = FindPlan(registry, shooter, channel->flightPlanId);
+                    if (plan != nullptr && !plan->waypoints.empty()) {
+                        planForShot = plan;
+                        target = entt::null;
+                        belief = AimBelief{ true, plan->waypoints.front(), b2Vec2{ 0.0f, 0.0f }, true };
+                    }
+                }
+
                 weapon.target = target;
-                if (target == entt::null || !belief.ok) {
-                    // Nothing to acquire, or no firing solution held; the barrel
-                    // holds its lay (see below).
+                if ((target == entt::null && planForShot == nullptr) || !belief.ok) {
+                    // Nothing to acquire (and no plan to fly), or no firing solution
+                    // held; the barrel holds its lay (see below).
                     weapon.acquired = false;
                     continue;
                 }
@@ -924,6 +984,14 @@ namespace naval {
                     shot.turnRate = weapon.munitionTurnRate;
                     shot.armDistance = weapon.munitionMinRange;
                     shot.waterborne = weapon.munitionWaterborne;
+                    // A plan launch carries its own copy of the waypoints and the
+                    // seeker range; homingTarget stays null (target is null here) and
+                    // the seeker acquires once the plan is flown. A direct launch
+                    // leaves waypoints empty and homes `target` as before.
+                    if (planForShot != nullptr) {
+                        shot.waypoints = planForShot->waypoints;
+                        shot.seekerRangeM = weapon.munitionSeekerRangeM;
+                    }
                     spawned.push_back(shot);
                 }
 
@@ -984,37 +1052,75 @@ namespace naval {
             auto& projectile = projectiles.get<Projectile>(entity);
 
             // A guided munition steers and accelerates before it is integrated. It
-            // turns its heading toward the homing target at its turn rate and ramps
-            // speed toward maxSpeed, so it leaves the cell at rest and drives in. A
+            // flies its flight plan first, if it has one — steering leg to leg — then
+            // switches its seeker on and homes. It ramps speed toward maxSpeed
+            // throughout, so it leaves the cell at rest and drives in. A homing
             // target that began sinking, left the registry, or otherwise stopped
-            // being a live combatant drops the lock: the munition goes dumb, holds
-            // its heading and keeps accelerating to the end of its run rather than
-            // circling the wreck. (A sinking hull keeps its Physics body but loses
-            // its Combatant, so testing Combatant is what releases the lock the tick
-            // it dies.) Ballistic shots fall straight through with constant velocity.
+            // being a live combatant drops the lock; with no waypoint and no lock the
+            // munition goes dumb, holds its heading and keeps running rather than
+            // circling a wreck. (A sinking hull keeps its Physics body but loses its
+            // Combatant, so testing Combatant is what releases the lock the tick it
+            // dies.) Ballistic shots fall straight through with constant velocity.
+            constexpr float kWaypointCaptureM = 200.0f; // floor capture radius for a leg (m)
             if (projectile.guidance == Guidance::Guided) {
                 float speed = projectile.velocity.Length();
-                bool const locked = projectile.homingTarget != entt::null &&
-                                    registry.valid(projectile.homingTarget) &&
-                                    registry.all_of<Physics, Combatant>(projectile.homingTarget);
-                // At (near) rest the heading is undefined, so seed it toward the
-                // target when locked, or hold due east when it has no mark to steer
-                // by; otherwise carry the current heading.
                 float heading = speed > 1e-3f
                                     ? std::atan2(projectile.velocity.y, projectile.velocity.x)
                                     : 0.0f;
-                if (locked) {
+
+                // Advance the plan: a leg is reached once inside the capture radius —
+                // the floor, or the munition's own turn circle if that is wider, so a
+                // fast round that cannot bank inside a leg counts it made as it sweeps
+                // past rather than orbiting it forever. No "overshot" test: at launch
+                // the round flies straight down the rail, not at the first waypoint,
+                // so a leg off the bow must not read as already passed and skipped.
+                float const turnRadiusM = projectile.turnRate > 1e-3f ? speed / projectile.turnRate : 0.0f;
+                float const captureM = std::max(kWaypointCaptureM, turnRadiusM);
+                while (projectile.waypointIndex < projectile.waypoints.size() &&
+                       (projectile.waypoints[projectile.waypointIndex] - projectile.position).Length() <=
+                           captureM) {
+                    ++projectile.waypointIndex;
+                }
+                bool const following = projectile.waypointIndex < projectile.waypoints.size();
+
+                // Terminal seeker: once the plan is spent (following false) acquire
+                // the nearest enemy in range, taking a fresh lock or holding a live
+                // one each tick. A direct-homed launch has no seeker range and simply
+                // keeps the homingTarget it was fired with.
+                bool locked = projectile.homingTarget != entt::null &&
+                              registry.valid(projectile.homingTarget) &&
+                              registry.all_of<Physics, Combatant>(projectile.homingTarget);
+                if (!following && !locked && projectile.seekerRangeM > 0.0f) {
+                    projectile.homingTarget = NearestSeekerTarget(registry, projectile.position,
+                                                                  projectile.target, projectile.seekerRangeM);
+                    locked = projectile.homingTarget != entt::null;
+                }
+
+                // Steer toward the current leg while the plan runs, else the homing
+                // target if one is held. With neither — a spent plan with nothing in
+                // range, or a lost lock — hold heading and fly on dumb.
+                bool steer = true;
+                float desired = heading;
+                if (following) {
+                    b2Vec2 const wp = projectile.waypoints[projectile.waypointIndex];
+                    desired = std::atan2(wp.y - projectile.position.y, wp.x - projectile.position.x);
+                } else if (locked) {
                     b2Vec2 const targetPos = registry.get<Physics>(projectile.homingTarget).body->GetPosition();
-                    float const desired = std::atan2(targetPos.y - projectile.position.y,
-                                                     targetPos.x - projectile.position.x);
+                    desired = std::atan2(targetPos.y - projectile.position.y,
+                                         targetPos.x - projectile.position.x);
+                } else {
+                    projectile.homingTarget = entt::null;
+                    steer = false;
+                }
+                if (steer) {
+                    // At (near) rest the heading is undefined, so seed it toward the
+                    // mark rather than turning up from due east.
                     if (speed <= 1e-3f) {
                         heading = desired;
                     }
                     float const delta = WrapPi(desired - heading);
                     float const step = projectile.turnRate * dt;
                     heading += std::abs(delta) <= step ? delta : std::copysign(step, delta);
-                } else {
-                    projectile.homingTarget = entt::null;
                 }
                 speed = std::min(projectile.maxSpeed, speed + (projectile.acceleration * dt));
                 projectile.velocity = speed * b2Vec2{ std::cos(heading), std::sin(heading) };

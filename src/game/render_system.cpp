@@ -42,6 +42,8 @@ namespace naval {
         const moth_ui::Color kTmaSampleColor{ 0.95f, 0.75f, 0.30f, 0.22f };       // debug: the fan of bearing cuts and the own-ship baseline they were taken from
         const moth_ui::Color kTmaTruthColor{ 1.00f, 0.30f, 0.40f, 0.90f };        // debug: ground-truth hull position, revealed for comparison
         const moth_ui::Color kTmaErrorColor{ 1.00f, 0.40f, 0.45f, 0.65f };        // debug: estimate-to-truth error line
+        const moth_ui::Color kFlightPlanColor{ 0.55f, 0.80f, 0.95f, 0.55f };       // an authored missile/torpedo flight plan's legs and waypoints
+        const moth_ui::Color kFlightPlanActiveColor{ 0.70f, 0.92f, 1.00f, 0.95f };  // the plan currently being authored (click to add waypoints)
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -720,6 +722,34 @@ namespace naval {
                     graphics.SetColor(kTmaErrorColor);
                     graphics.DrawLineF(camera.WorldToScreen(track.position), truthPx);
                 }
+            }
+        }
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
+    }
+
+    void DrawFlightPlans(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry,
+                         Camera const& camera, entt::entity viewer, int activePlanId) {
+        auto const* library = registry.try_get<FlightPlanLibrary>(viewer);
+        if (library == nullptr) {
+            return;
+        }
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+        for (auto const& plan : library->plans) {
+            if (plan.waypoints.empty()) {
+                continue;
+            }
+            // The plan being authored draws brighter and a touch larger, so it reads
+            // apart from the others while the player is clicking waypoints into it.
+            bool const active = plan.id == activePlanId;
+            graphics.SetColor(active ? kFlightPlanActiveColor : kFlightPlanColor);
+            for (std::size_t i = 1; i < plan.waypoints.size(); ++i) {
+                graphics.DrawLineF(camera.WorldToScreen(plan.waypoints[i - 1]),
+                                   camera.WorldToScreen(plan.waypoints[i]));
+            }
+            float const markPx = active ? 5.0f : 4.0f;
+            for (auto const& wp : plan.waypoints) {
+                graphics.DrawFillCircleF(camera.WorldToScreen(wp), markPx);
             }
         }
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);

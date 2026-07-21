@@ -62,6 +62,7 @@ namespace naval {
         registry.emplace<ContactPicture>(entity, ContactPicture{});
         if (faction == Faction::Player) {
             registry.emplace<TrackFile>(entity, TrackFile{});
+            registry.emplace<FlightPlanLibrary>(entity, FlightPlanLibrary{});
         }
         registry.emplace<MoveTarget>(entity, MoveTarget{ b2Vec2{ 0.0f, 0.0f }, false });
         registry.emplace<Helm>(entity, Helm{});
@@ -142,6 +143,8 @@ namespace naval {
                 weapon.munitionInitialSpeed = munitionDef.initialSpeed;
                 weapon.munitionWaterborne = munitionDef.medium == defs::Medium::Water;
                 weapon.munitionHealth = munitionDef.health;
+                weapon.munitionFlightPlan = munitionDef.flightPlan;
+                weapon.munitionSeekerRangeM = munitionDef.seekerRangeM;
                 weapon.fireSound = audio.Find(launcherDef.fireSound);
                 weapon.fireSoundLoops = audio.IsLooping(weapon.fireSound);
                 weapon.fireShakeM = launcherDef.fireShakeM;

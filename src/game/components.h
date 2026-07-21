@@ -178,6 +178,8 @@ namespace naval {
         float munitionInitialSpeed = 0.0f; // m/s off the rail (Launcher kind); a VLS launches at rest
         bool munitionWaterborne = false;   // true for a torpedo (water medium); it swims and makes no surface splash
         float munitionHealth = 0.0f;       // warhead health stamped on each launched munition, for point defence to whittle down; 0 = the munition cannot be shot down
+        bool munitionFlightPlan = false;   // whether the loaded munition can fly an authored plan (unlocks the plan dropdown for this unit)
+        float munitionSeekerRangeM = 0.0f; // m: terminal seeker range stamped on a plan-launched munition; 0 = no seeker
         // The guided munition's drawn rectangle, cached from the munition; both
         // zero for a gun, whose ballistic shot draws as a circle of
         // projectileRadiusM instead. Cosmetic only — the shot's collision, point
@@ -352,6 +354,13 @@ namespace naval {
         // switches a unit's on when it wants to see where the guns can bear.
         // Scoped to the unit, so a group's arcs toggle together.
         bool showArc = false;
+
+        // The authored flight plan this unit launches its plan-capable munitions
+        // down (an id into the ship's FlightPlanLibrary), or -1 for none. When set,
+        // a launcher on this unit fires fire-and-forget — no designated contact
+        // needed — flying the plan and acquiring on its own seeker at the end; a
+        // launcher whose munition is not plan-capable, and every gun, ignores it.
+        int flightPlanId = -1;
     };
 
     // A ship's fire control: its fire units. Every battery mount is on exactly one
@@ -365,6 +374,30 @@ namespace naval {
     struct FireControl {
         std::vector<FireChannel> channels; // fire units, in display order
         int nextId = 0;                    // next channel id to hand out
+    };
+
+    // One authored waypoint plan for guided munitions: an ordered run of world
+    // points a plan-capable missile or torpedo flies before its seeker takes over.
+    // Authored on the map (see GameLayer's planning mode) and selected per fire unit
+    // (FireChannel::flightPlanId). A fired munition copies the points onto itself,
+    // so editing or deleting the plan afterwards never disturbs a round already in
+    // the air — the same self-contained trade the munition already makes for its
+    // stats and sounds.
+    struct FlightPlan {
+        int id = 0;                       // stable handle the fire units reference; never reused
+        std::string name;                 // player-facing label, editable in the plan window
+        std::vector<b2Vec2> waypoints;    // world points (metres), flown in order
+    };
+
+    // A ship's library of authored flight plans. Held only by a ship that authors
+    // them (the player, for now), the counterpart to its FireControl: the plan
+    // window edits it, the fire units reference plans in it by id, and the weapons
+    // system reads it at launch to stamp a plan onto the munition. `nextId` hands
+    // out a fresh id per plan so a unit's selection is never ambiguous as plans are
+    // made and deleted.
+    struct FlightPlanLibrary {
+        std::vector<FlightPlan> plans;
+        int nextId = 0;
     };
 
     // Which side a ship fights for. Weapons engage hulls of a different
@@ -757,6 +790,18 @@ namespace naval {
         float maxSpeed = 0.0f;                  // m/s the munition accelerates up to
         float acceleration = 0.0f;              // m/s^2 gained in flight
         float turnRate = 0.0f;                  // rad/s the heading steers toward the target
+
+        // Flight plan (guided munitions only; empty for a directly-homed launch).
+        // A plan-launched munition flies these world points in order, steering for
+        // waypoints[waypointIndex] and advancing as it reaches each, with no homing
+        // target while the plan runs. Once the last is passed the seeker comes on:
+        // each tick it acquires the nearest hull of its target faction within
+        // seekerRangeM into homingTarget and homes it, flying straight and scanning
+        // until one enters range or the run is spent. Copied off the plan at launch,
+        // so the round is self-contained once away.
+        std::vector<b2Vec2> waypoints;          // world points (m) flown in order; empty = no plan
+        std::size_t waypointIndex = 0;          // the leg currently steered toward
+        float seekerRangeM = 0.0f;              // m: terminal acquisition range once the plan is spent; 0 = no seeker
 
         // Warhead arming: distance (m) the munition must still travel before it is
         // live. Counts down with the run; a strike while it is above zero is a dud

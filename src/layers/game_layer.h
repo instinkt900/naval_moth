@@ -96,6 +96,14 @@ namespace naval {
         // and its gates tunable without a test suite.
         void DrawTmaDebug();
 
+        // The Flight Plans window: author waypoint plans for guided munitions. "New
+        // plan" (or a plan's "Add waypoints") enters planning mode — m_planningId
+        // holds the plan being edited — and each click on the water appends a
+        // waypoint to it until Escape. Also lists each plan's waypoints with a remove
+        // control, and deletes plans. Plans live in the ship's FlightPlanLibrary; a
+        // fire unit selects one in the Target window.
+        void DrawFlightPlansPanel();
+
         // ImGui window of render-layer toggles. The frame is composited as four
         // layers — map (sea, terrain, seen hulls), radar (blips, reach ring,
         // passive bearings), tactical (arcs, waypoints, projectiles) and debug
@@ -144,5 +152,10 @@ namespace naval {
         bool m_showRadarLayer = true;
         bool m_showTacticalLayer = true;
         bool m_showDebugLayer = true;
+        // The flight plan currently being authored (its id in the ship's
+        // FlightPlanLibrary), or -1 when not planning. While set, a click on the
+        // water appends a waypoint to that plan rather than ordering the helm, and
+        // Escape ends it (see OnMouseDown / OnKey).
+        int m_planningId = -1;
     };
 }

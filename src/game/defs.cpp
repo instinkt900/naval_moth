@@ -198,6 +198,11 @@ namespace naval::defs {
             m.impactSound = j.value("impactSound", std::string{});
             m.splashSound = j.value("splashSound", std::string{});
             m.impactShakeM = j.value("impactShakeM", 0.0f);
+            m.flightPlan = j.value("flightPlan", false);
+            m.seekerRangeM = j.value("seekerRangeM", 0.0f);
+            Require(m.seekerRangeM >= 0.0f, "munition '" + id + "' seekerRangeM must not be negative");
+            Require(!m.flightPlan || m.seekerRangeM > 0.0f,
+                    "munition '" + id + "' with flightPlan needs a positive seekerRangeM");
             Require(m.range > 0.0f, "munition '" + id + "' range must be positive");
             Require(m.minRange >= 0.0f && m.minRange < m.range,
                     "munition '" + id + "' minRange must be in [0, range)");

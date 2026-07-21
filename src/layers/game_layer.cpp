@@ -129,6 +129,20 @@ namespace naval {
         b2Vec2 const world =
             m_camera.ScreenToWorld({ static_cast<float>(pos.x), static_cast<float>(pos.y) });
 
+        // In planning mode a click drops a flight-plan waypoint instead of a helm
+        // order. The two never collide: planning is entered deliberately from the
+        // Flight Plans window and left with Escape (see DrawFlightPlansPanel / OnKey).
+        if (m_planningId >= 0) {
+            auto& library = m_registry.get<FlightPlanLibrary>(m_ship);
+            for (auto& plan : library.plans) {
+                if (plan.id == m_planningId) {
+                    plan.waypoints.push_back(world);
+                    break;
+                }
+            }
+            return true;
+        }
+
         // A click is a helm order, plain and simple — designating a contact is no
         // longer a click on the water but a pick from a fire unit's target dropdown
         // in the Target window (see DrawTargetPanel), so the two never collide. Each
@@ -163,6 +177,13 @@ namespace naval {
         case moth_ui::Key::S: m_panDown = down; return true;
         case moth_ui::Key::A: m_panLeft = down; return true;
         case moth_ui::Key::D: m_panRight = down; return true;
+        // Escape ends flight-plan authoring; ignored otherwise.
+        case moth_ui::Key::Escape:
+            if (down && m_planningId >= 0) {
+                m_planningId = -1;
+                return true;
+            }
+            return false;
         default: return false;
         }
     }
@@ -273,6 +294,7 @@ namespace naval {
 
         DrawHelmPanel();
         DrawTargetPanel();
+        DrawFlightPlansPanel();
         DrawContactList();
         DrawAggroDebug();
         DrawTmaDebug();
@@ -333,6 +355,9 @@ namespace naval {
         for (auto ship : m_registry.view<Physics, Armament>()) {
             DrawPointDefenseFire(m_graphics, m_registry, m_camera, ship);
         }
+
+        // The authored flight plans on the water, the one being edited highlighted.
+        DrawFlightPlans(m_graphics, m_registry, m_camera, m_ship, m_planningId);
     }
 
     void GameLayer::DrawDebugLayer() {
@@ -585,6 +610,81 @@ namespace naval {
         ImGui::End();
     }
 
+    void GameLayer::DrawFlightPlansPanel() {
+        auto& library = m_registry.get<FlightPlanLibrary>(m_ship);
+        ImGui::Begin("Flight Plans");
+
+        // Start a new plan and drop straight into authoring it: the button hands out
+        // a fresh id, and from here clicks on the water append waypoints until Escape.
+        if (ImGui::Button("New plan")) {
+            FlightPlan plan;
+            plan.id = library.nextId++;
+            plan.name = fmt::format("Plan {}", plan.id + 1);
+            library.plans.push_back(std::move(plan));
+            m_planningId = library.plans.back().id;
+        }
+        if (m_planningId >= 0) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("click to add waypoints - Esc to finish");
+        }
+        ImGui::Separator();
+
+        if (library.plans.empty()) {
+            ImGui::TextUnformatted("No plans");
+            ImGui::End();
+            return;
+        }
+
+        // One block per plan: its name, an Add-waypoints/Done toggle for authoring,
+        // Delete, and its waypoints each with a remove. Edits to the vectors are
+        // deferred to after the loop so nothing is mutated mid-iteration.
+        int deletePlan = -1;
+        for (auto& plan : library.plans) {
+            ImGui::PushID(plan.id);
+            ImGui::TextUnformatted(plan.name.c_str());
+            ImGui::SameLine();
+            bool const planning = plan.id == m_planningId;
+            if (ImGui::SmallButton(planning ? "Done" : "Add waypoints")) {
+                m_planningId = planning ? -1 : plan.id;
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Delete")) {
+                deletePlan = plan.id;
+            }
+
+            if (plan.waypoints.empty()) {
+                ImGui::TextDisabled("  (no waypoints)");
+            }
+            int removeWaypoint = -1;
+            for (std::size_t i = 0; i < plan.waypoints.size(); ++i) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::TextUnformatted(fmt::format("  {}: {:.0f}, {:.0f}", i + 1, plan.waypoints[i].x,
+                                                   plan.waypoints[i].y)
+                                           .c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("x")) {
+                    removeWaypoint = static_cast<int>(i);
+                }
+                ImGui::PopID();
+            }
+            if (removeWaypoint >= 0) {
+                plan.waypoints.erase(plan.waypoints.begin() + removeWaypoint);
+            }
+            ImGui::Separator();
+            ImGui::PopID();
+        }
+
+        if (deletePlan >= 0) {
+            if (m_planningId == deletePlan) {
+                m_planningId = -1;
+            }
+            library.plans.erase(std::remove_if(library.plans.begin(), library.plans.end(),
+                                               [&](FlightPlan const& p) { return p.id == deletePlan; }),
+                                library.plans.end());
+        }
+        ImGui::End();
+    }
+
     void GameLayer::DrawLayersPanel() {
         // Master switches over the four render layers Draw() composites. The label
         // on each names what falls into it, so the toggle reads without having to
@@ -762,6 +862,7 @@ namespace naval {
 
     void GameLayer::DrawTargetPanel() {
         auto& fireControl = m_registry.get<FireControl>(m_ship);
+        auto& library = m_registry.get<FlightPlanLibrary>(m_ship);
         auto* armament = m_registry.try_get<Armament>(m_ship);
 
         ImGui::Begin("Target");
@@ -809,6 +910,33 @@ namespace naval {
                         channel.target != option.first) {
                         channel.target = option.first;
                         channel.firing = false;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+        };
+
+        // A plan-capable unit's flight-plan dropdown: pick an authored plan for its
+        // launchers to fly (or clear). A plan makes the unit fire-and-forget — no
+        // designated contact needed — so selecting one is an alternative to the
+        // target above, not an addition to it (see combat_system). Shown only for a
+        // unit whose munition supports plans.
+        auto flightPlanDropdown = [&](FireChannel& channel) {
+            std::string preview = "(none)";
+            for (auto const& plan : library.plans) {
+                if (plan.id == channel.flightPlanId) {
+                    preview = plan.name;
+                    break;
+                }
+            }
+            ImGui::SetNextItemWidth(190.0f);
+            if (ImGui::BeginCombo("Flight plan", preview.c_str())) {
+                if (ImGui::Selectable("(none)", channel.flightPlanId == -1)) {
+                    channel.flightPlanId = -1;
+                }
+                for (auto const& plan : library.plans) {
+                    if (ImGui::Selectable(plan.name.c_str(), plan.id == channel.flightPlanId)) {
+                        channel.flightPlanId = plan.id;
                     }
                 }
                 ImGui::EndCombo();
@@ -925,7 +1053,22 @@ namespace naval {
                 ImGui::TextUnformatted(groups[groupOrdinal++].second.c_str());
                 ImGui::SameLine();
                 bool const disband = ImGui::SmallButton("Disband");
-                targetDropdown(channel);
+                // A group with any plan-capable launcher is flown by its plan and
+                // shows the plan dropdown in place of the target one (see the lone
+                // mount above); a group of guns keeps its target dropdown.
+                bool planCapable = false;
+                for (auto const& weapon : weapons) {
+                    if (weapon.channel == channel.id && weapon.kind != WeaponKind::Gun &&
+                        weapon.munitionFlightPlan) {
+                        planCapable = true;
+                        break;
+                    }
+                }
+                if (planCapable) {
+                    flightPlanDropdown(channel);
+                } else {
+                    targetDropdown(channel);
+                }
                 orderButtons(channel);
 
                 int bearing = 0;
@@ -978,7 +1121,14 @@ namespace naval {
                 }
                 Weapon& weapon = weapons[wi];
                 ImGui::TextUnformatted(weapon.name.empty() ? "Weapon" : weapon.name.c_str());
-                targetDropdown(channel);
+                // A plan-capable launcher is flown by its plan alone — fire-and-
+                // forget, its own seeker finds the mark — so it shows the flight-plan
+                // dropdown in place of the target one, never both.
+                if (weapon.kind != WeaponKind::Gun && weapon.munitionFlightPlan) {
+                    flightPlanDropdown(channel);
+                } else {
+                    targetDropdown(channel);
+                }
                 orderButtons(channel, &weapon);
                 // A launcher shows its loaded munition; a gun's spread toggle now
                 // rides the order row above, beside the arc toggle.
