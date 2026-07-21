@@ -5,6 +5,7 @@
 #include "game/combat_system.h"
 #include "game/components.h"
 #include "game/hull_shape.h"
+#include "game/tma_system.h"
 
 #include <moth_graphics/graphics/igraphics.h>
 #include <moth_ui/utils/rect.h>
@@ -38,6 +39,9 @@ namespace naval {
         const moth_ui::Color kBearingColor{ 0.95f, 0.88f, 0.25f, 0.85f };         // passive ESM bearing line (direction, no range; length = strength)
         const moth_ui::Color kTmaFixColor{ 1.00f, 0.72f, 0.30f, 0.90f };          // solved TMA estimate: uncertainty ring + course stalk (an estimate, not a hard fix)
         const moth_ui::Color kOwnBlipColor{ 0.55f, 0.85f, 1.00f, 0.95f };         // own-ship mark on the plot (ring + heading stalk), distinct from contacts
+        const moth_ui::Color kTmaSampleColor{ 0.95f, 0.75f, 0.30f, 0.22f };       // debug: the fan of bearing cuts and the own-ship baseline they were taken from
+        const moth_ui::Color kTmaTruthColor{ 1.00f, 0.30f, 0.40f, 0.90f };        // debug: ground-truth hull position, revealed for comparison
+        const moth_ui::Color kTmaErrorColor{ 1.00f, 0.40f, 0.45f, 0.65f };        // debug: estimate-to-truth error line
 
         // --- wake ---
         const moth_ui::Color kWakeColor{ 0.85f, 0.90f, 0.95f, 1.0f }; // pale foam; alpha set per mark
@@ -655,6 +659,69 @@ namespace naval {
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
         graphics.SetColor(aggro->target != entt::null ? kAggroRingActiveColor : kAggroRingColor);
         DrawCircle(graphics, centrePx, radiusPx);
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
+    }
+
+    void DrawTmaOverlay(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry,
+                        Camera const& camera, entt::entity viewer) {
+        // A debug reveal of what the passive TMA solver is actually working with:
+        // the fan of bearing cuts it has taken and the own-ship baseline they span
+        // (a straight leg shows as a collapsed fan — the unobservable case), each
+        // track's current estimate, and a line from that estimate to the contact's
+        // real hull so the solution error is visible at a glance. Reads ground truth
+        // straight off the bodies, which only a debug view may do. Gated by its own
+        // toggle in the TMA window, independent of the tactical layers.
+        if (!TmaTuningRef().showResolutions) {
+            return;
+        }
+        auto const* trackFile = registry.try_get<TrackFile>(viewer);
+        if (trackFile == nullptr) {
+            return;
+        }
+        auto const* sensors = registry.try_get<Sensors>(viewer);
+        float const fallbackLenM = sensors != nullptr ? sensors->passiveRangeM : 20000.0f;
+
+        graphics.SetTransform(moth_ui::FloatMat4x4::Identity());
+        graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Alpha);
+        for (auto const& entry : trackFile->tracks) {
+            entt::entity const contact = entry.first;
+            TmaTrack const& track = entry.second;
+
+            // Each cut as a ray from where own ship took it, run out to the solved
+            // range (so a good fit shows the whole fan converging on one point) or,
+            // unsolved, to passive reach. The rays are the clean bearings the solver
+            // fits, and the polyline through their origins is the manoeuvre baseline.
+            graphics.SetColor(kTmaSampleColor);
+            for (auto const& s : track.samples) {
+                float const lenM = track.solved ? (track.position - s.ownPos).Length() : fallbackLenM;
+                b2Vec2 const end{ s.ownPos.x + (lenM * std::cos(s.bearing)),
+                                  s.ownPos.y + (lenM * std::sin(s.bearing)) };
+                graphics.DrawLineF(camera.WorldToScreen(s.ownPos), camera.WorldToScreen(end));
+            }
+            for (std::size_t i = 1; i < track.samples.size(); ++i) {
+                graphics.DrawLineF(camera.WorldToScreen(track.samples[i - 1].ownPos),
+                                   camera.WorldToScreen(track.samples[i].ownPos));
+            }
+
+            if (track.solved) {
+                DrawEstimate(graphics, camera, track.position, track.velocity, track.confidence, kTmaFixColor);
+            }
+
+            // The truth reveal: a small cross on the real hull, and the error line to
+            // it from the estimate. Skipped once the contact is gone (a lost track
+            // held on its last solution has no hull left to compare against).
+            if (registry.valid(contact) && registry.all_of<Physics>(contact)) {
+                b2Vec2 const truth = registry.get<Physics>(contact).body->GetPosition();
+                moth_ui::FloatVec2 const truthPx = camera.WorldToScreen(truth);
+                graphics.SetColor(kTmaTruthColor);
+                graphics.DrawLineF({ truthPx.x - 6.0f, truthPx.y }, { truthPx.x + 6.0f, truthPx.y });
+                graphics.DrawLineF({ truthPx.x, truthPx.y - 6.0f }, { truthPx.x, truthPx.y + 6.0f });
+                if (track.solved) {
+                    graphics.SetColor(kTmaErrorColor);
+                    graphics.DrawLineF(camera.WorldToScreen(track.position), truthPx);
+                }
+            }
+        }
         graphics.SetBlendMode(moth_graphics::graphics::BlendMode::Replace);
     }
 

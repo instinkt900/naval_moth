@@ -32,6 +32,13 @@ namespace naval {
     // visibility both come from it).
     void DrawAggroRing(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);
 
+    // Debug overlay of `viewer`'s passive TMA state: each track's fan of bearing
+    // cuts and the own-ship baseline they span, its current estimate, and a line
+    // from that estimate to the contact's real hull so the solution error reads at
+    // a glance. Reveals ground truth, so it is a debug aid only — gated by the
+    // showResolutions toggle in the shared TMA tuning.
+    void DrawTmaOverlay(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity viewer);
+
     // The dashed course line and marker for a ship's active move target — where
     // it is steering, as opposed to what it is shooting at (see DrawTargetMarker).
     void DrawTarget(moth_graphics::graphics::IGraphics& graphics, entt::registry& registry, Camera const& camera, entt::entity ship);

@@ -336,15 +336,18 @@ namespace naval {
     }
 
     void GameLayer::DrawDebugLayer() {
-        // On top of everything: the aggro-range rings around the AI ships, and the
+        // On top of everything: the aggro-range rings around the AI ships, the
         // weapon-spread previews — a line to each enabled weapon's target and the
-        // disc its shots may land within.
+        // disc its shots may land within — and the passive-TMA reveal (its cut
+        // geometry and estimate-vs-truth error). Each carries its own toggle, so
+        // this layer being up only makes them available.
         for (auto ship : m_registry.view<Physics, Aggro>()) {
             DrawAggroRing(m_graphics, m_registry, m_camera, ship);
         }
         for (auto ship : m_registry.view<Physics, Armament>()) {
             DrawWeaponSpread(m_graphics, m_registry, m_camera, ship);
         }
+        DrawTmaOverlay(m_graphics, m_registry, m_camera, m_ship);
     }
 
     void GameLayer::DrawAggroDebug() {
@@ -360,6 +363,11 @@ namespace naval {
     void GameLayer::DrawTmaDebug() {
         auto const* trackFile = m_registry.try_get<TrackFile>(m_ship);
         ImGui::Begin("TMA (debug)");
+        // Master switch for the contact positional noise, kept above the track list
+        // so it is reachable even with nothing held — flip it to A/B the feature, or
+        // leave it off to disable the noise entirely (see SensorTuning).
+        ImGui::Checkbox("Contact noise", &SensorTuningRef().noiseEnabled);
+        ImGui::Separator();
         if (trackFile == nullptr || trackFile->tracks.empty()) {
             ImGui::TextUnformatted("No passive tracks");
             ImGui::End();
@@ -374,6 +382,7 @@ namespace naval {
         ImGui::SliderFloat("min obs", &tuning.minObs, 1e-9f, 1e-2f, "%.1e", ImGuiSliderFlags_Logarithmic);
         ImGui::SliderFloat("obs full", &tuning.obsFull, 1e-8f, 1.0f, "%.1e", ImGuiSliderFlags_Logarithmic);
         ImGui::SliderFloat("solved floor", &tuning.solvedFloor, 0.0f, 1.0f, "%.2f");
+        ImGui::Checkbox("Show resolutions (cuts + truth)", &tuning.showResolutions);
 
         constexpr float kMetresPerSecToKnots = 1.94384f;
         b2Vec2 const ownPos = m_registry.get<Physics>(m_ship).body->GetPosition();

@@ -10,6 +10,11 @@
 #include <random>
 
 namespace naval {
+    SensorTuning& SensorTuningRef() {
+        static SensorTuning tuning;
+        return tuning;
+    }
+
     namespace {
         // The dwell a positional fix must accumulate to resolve a contact. Motion
         // (course and speed) falls out of tracking first — a run of fixes
@@ -28,12 +33,63 @@ namespace naval {
         constexpr float kIdentifyMaxS = 480.0f;    // s; slowest a radar class can resolve (8 min)
         constexpr float kVelTauS = 8.0f;           // s; velocity-tracker time constant (alpha-beta, beta = dt/tau)
 
+        // Positional-noise offset tuning (see Contact::offset). Game-feel constants,
+        // meant to be dialled by hand against the sensor ranges in hulls.json (tens
+        // of km), not derived: a wide passive cut, a tight active one that only
+        // exists until the class resolves, and a slow drift so the mark wanders
+        // rather than jitters.
+        constexpr float kBearingMaxOffsetM = 4000.0f; // widest passive wander (m of lateral offset at zero confidence)
+        constexpr float kRangedMaxOffsetM = 300.0f;   // widest active-fix wander (m), before the class resolves
+        constexpr float kDriftAngRate = 0.02f;        // rad·s^-1/2; angular random-walk rate — ~6° of drift over ~30 s
+        constexpr float kMagEaseRate = 0.1f;          // 1/s; offset length chases its cap on a ~10 s time constant
+        constexpr float kPi = 3.14159265f;
+
         // One generator for the whole run, seeded once, shared by every observer's
         // identification draw — the same pattern the wander system uses. The draw
         // happens once per contact at acquisition, not per tick.
         std::mt19937& IdentifyRng() {
             static std::mt19937 rng{ std::random_device{}() };
             return rng;
+        }
+
+        // A second run-wide generator for the per-tick noise drift, kept apart from
+        // IdentifyRng so the one-shot identification draw stays reproducible
+        // independent of how many drift steps happen to have run.
+        std::mt19937& NoiseRng() {
+            static std::mt19937 rng{ std::random_device{}() };
+            return rng;
+        }
+
+        // Evolve a contact's positional-noise offset one tick: ease its length
+        // toward the confidence-set cap `capM` while its direction wanders on a slow
+        // random walk, so the mark drifts smoothly and tightens as the contact
+        // firms. Seeds a random direction when the offset is ~zero (a fresh track,
+        // or one whose cap collapsed to nothing and is opening back up).
+        b2Vec2 DriftOffset(b2Vec2 offset, float capM, float dt) {
+            std::mt19937& rng = NoiseRng();
+            float const mag = offset.Length();
+            float ang = 0.0f;
+            if (mag > 1e-3f) {
+                ang = std::atan2(offset.y, offset.x);
+            } else {
+                std::uniform_real_distribution<float> seed(-kPi, kPi);
+                ang = seed(rng);
+            }
+            std::normal_distribution<float> step(0.0f, 1.0f);
+            ang += step(rng) * kDriftAngRate * std::sqrt(dt);
+            float const newMag = mag + ((capM - mag) * std::clamp(kMagEaseRate * dt, 0.0f, 1.0f));
+            return { newMag * std::cos(ang), newMag * std::sin(ang) };
+        }
+
+        // The observer's last-tick TMA confidence on `other`, or 0 if it runs no
+        // track file or has no solved solution for it yet. Used only to tighten a
+        // passive cut's noise as its range solves.
+        float SolvedConfidence(TrackFile const* trackFile, entt::entity other) {
+            if (trackFile == nullptr) {
+                return 0.0f;
+            }
+            auto const it = trackFile->tracks.find(other);
+            return (it != trackFile->tracks.end() && it->second.solved) ? it->second.confidence : 0.0f;
         }
 
         // Classify one opposing hull `other` against the observer's senses and
@@ -44,7 +100,8 @@ namespace naval {
         // the passive rung, which depends on the *other* ship radiating.
         void RefreshContact(ContactPicture& picture, entt::entity other, b2Vec2 otherPos,
                             b2Vec2 otherVel, b2Vec2 delta, float d, float dt,
-                            Sensors const& sensors, Sensors const* otherSensors) {
+                            Sensors const& sensors, Sensors const* otherSensors,
+                            float tmaConfidence, bool noiseEnabled) {
             // Seen outright inside visual range: the real hull, full truth at once —
             // a fixed position, its true motion (no tracking lag when you can watch
             // it), and an immediate identification. A positional fix, so both clocks
@@ -52,6 +109,7 @@ namespace naval {
             if (d <= sensors.visualRangeM) {
                 Contact& c = picture.contacts[other];
                 c.level = DetectLevel::Visual;
+                c.offset = { 0.0f, 0.0f }; // you can see it: no uncertainty to bake in
                 c.lastPos = otherPos;
                 c.hasPos = true;
                 c.velocity = otherVel;
@@ -76,7 +134,6 @@ namespace naval {
                 // whose estimate converges over ~kVelTauS. The prediction it corrects
                 // against is lastPos as the ageing pass dead-reckoned it this tick.
                 if (!c.hasPos) {
-                    c.lastPos = otherPos;
                     c.hasPos = true;
                     // First fix on this track: draw the class-resolve threshold it
                     // will have to dwell past. Drawn once here, so the contact keeps
@@ -84,9 +141,13 @@ namespace naval {
                     // it each tick and never converging.
                     std::uniform_real_distribution<float> dist(kIdentifyMinS, kIdentifyMaxS);
                     c.identifyThresholdS = dist(IdentifyRng());
+                    // No previous fix to difference; velocity stays as it was (zero
+                    // on a fresh track).
                 } else {
-                    c.velocity += (1.0f / kVelTauS) * (otherPos - c.lastPos);
-                    c.lastPos = otherPos;
+                    // Difference the true fix against the previous *true* position —
+                    // the surfaced lastPos with its baked offset stripped off — so
+                    // the positional noise rides along and never registers as motion.
+                    c.velocity += (1.0f / kVelTauS) * (otherPos - (c.lastPos - c.offset));
                 }
                 c.staleness = 0.0f;
                 c.fixStaleness = 0.0f;
@@ -97,6 +158,15 @@ namespace naval {
                 if (c.dwell >= c.identifyThresholdS) {
                     c.identified = true;
                 }
+                // A radar fix is accurate from the first return and only tightens as
+                // the class is nailed: shrink the wander over the same dwell that
+                // resolves identity, to nothing once identified. Then bake it into
+                // the believed position everything downstream reads.
+                float const resolve =
+                    c.identified ? 1.0f : std::clamp(c.dwell / c.identifyThresholdS, 0.0f, 1.0f);
+                c.offset = noiseEnabled ? DriftOffset(c.offset, kRangedMaxOffsetM * (1.0f - resolve), dt)
+                                        : b2Vec2{ 0.0f, 0.0f };
+                c.lastPos = otherPos + c.offset;
                 c.level = c.identified ? DetectLevel::Identified : DetectLevel::Ranged;
                 return;
             }
@@ -132,19 +202,36 @@ namespace naval {
             // a fix to a bearing keeps its live bearing while its blip decays.
             Contact& c = picture.contacts[other];
             c.level = DetectLevel::Bearing;
-            c.bearing = std::atan2(delta.y, delta.x);
             c.strength = std::clamp((q - 1.0f) / (kFullStrengthQ - 1.0f), 0.0f, 1.0f);
+            // Positional noise as a vector offset on the true contact, read out as
+            // an angle. The wander is widest for a faint cut and tightens as the
+            // received strength grows or the TMA solution firms (tmaConfidence is
+            // last tick's — this runs before UpdateTMA). Strength alone bootstraps
+            // it, so a closing contact tightens even before TMA solves and the
+            // conf→noise loop can't deadlock. Only the direction is kept; no
+            // displaced position is stored, so a bearing stays unplaceable.
+            float const conf = std::max(c.strength, tmaConfidence);
+            c.offset = noiseEnabled ? DriftOffset(c.offset, kBearingMaxOffsetM * (1.0f - conf), dt)
+                                    : b2Vec2{ 0.0f, 0.0f };
+            b2Vec2 const noisyDelta = delta + c.offset;
+            c.bearing = std::atan2(noisyDelta.y, noisyDelta.x);
+            c.trueBearing = std::atan2(delta.y, delta.x); // clean cut for the TMA solver
             c.staleness = 0.0f;
         }
     }
 
     void UpdateSensors(entt::registry& registry, float dt) {
+        bool const noiseEnabled = SensorTuningRef().noiseEnabled;
         auto observers = registry.view<Physics, Combatant, Sensors, ContactPicture>();
         for (auto self : observers) {
             b2Vec2 const selfPos = observers.get<Physics>(self).body->GetPosition();
             Faction const faction = observers.get<Combatant>(self).faction;
             Sensors const& sensors = observers.get<Sensors>(self);
             ContactPicture& picture = observers.get<ContactPicture>(self);
+            // Last tick's TMA solution per contact, if this observer runs one — read
+            // here (UpdateSensors precedes UpdateTMA) to tighten a passive cut as its
+            // range solves. Absent for an observer with no TrackFile.
+            TrackFile const* trackFile = registry.try_get<TrackFile>(self);
 
             // Updated in place, not rebuilt: age both clocks on every held contact
             // first, then a detection below resets what it refreshes — any detection
@@ -173,7 +260,8 @@ namespace naval {
                 b2Vec2 const delta = otherPos - selfPos;
                 RefreshContact(picture, other, otherPos, otherBody->GetLinearVelocity(),
                                delta, delta.Length(), dt, sensors,
-                               registry.try_get<Sensors>(other));
+                               registry.try_get<Sensors>(other),
+                               SolvedConfidence(trackFile, other), noiseEnabled);
             }
 
             // Keep a track while it is either still detected (staleness zero) or

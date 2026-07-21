@@ -9,8 +9,8 @@ namespace naval {
     // too — a sound plays as authored at kMaxZoom and is at its quietest at
     // kMinZoom, and a camera shake fades on the same curve — so "how zoomed out
     // are we" is only meaningful relative to these.
-    inline constexpr float kMinZoom = 0.03f;
-    inline constexpr float kMaxZoom = 8.0f;
+    inline constexpr float kMinZoom = 0.01f;
+    inline constexpr float kMaxZoom = 2.0f;
 
     // Box2D simulates in metres; moth draws in pixels. The camera is the single
     // place the two systems meet. All world state (body sizes, positions, ranges)

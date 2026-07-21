@@ -8,15 +8,20 @@ namespace naval {
     // the two stay in step while dialling the feature in at runtime.
     //
     // These are conditioning thresholds, not accuracy ones: the passive bearings
-    // fed to the solver are exact, so a fit is the *correct* target state whenever
-    // the geometry is observable at all — observability only measures how well-
-    // conditioned that fit is (a slow bearing sweep over tens of km is correct but
-    // ill-conditioned). Observability spans orders of magnitude, so confidence maps
+    // fed to the solver are exact — Contact::trueBearing, the cut without its
+    // display noise — so a fit is the *correct* target state whenever the geometry
+    // is observable at all, and observability only measures how well-conditioned
+    // that fit is (a slow bearing sweep over tens of km is correct but
+    // ill-conditioned). The wandering cut the operator sees (Contact::bearing) is a
+    // display layer over this: the solver deliberately works the clean geometry so
+    // ranges stay solvable, and its confidence then tightens that display noise (see
+    // Contact::offset). Observability spans orders of magnitude, so confidence maps
     // from it on a log scale between minObs and obsFull.
     struct TmaTuning {
         float minObs = 1e-8f;      // numerical floor: below this the fit is treated as unobservable
         float obsFull = 1e-4f;     // observability mapping to full confidence (log scale up from minObs)
         float solvedFloor = 0.05f; // least confidence still shown as a solution
+        bool showResolutions = false; // debug: overlay each track's cut geometry and its estimate-vs-truth error
     };
 
     // The one live TMA tuning block, behind an accessor so the solver and the debug

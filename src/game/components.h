@@ -449,14 +449,35 @@ namespace naval {
     struct Contact {
         DetectLevel level = DetectLevel::Bearing;
 
-        // World bearing from the observer to the contact (radians) — the one thing
-        // a passive detection yields, and all it yields. Meaningful only at the
-        // Bearing rung; a Ranged or Visual contact carries its true position on the
-        // hull instead and is drawn from that. Held here rather than re-derived at
-        // draw time precisely so the range is *not* available to the renderer: a
+        // Measured world bearing from the observer to the contact (radians) — the
+        // one thing a passive detection yields, and all it yields. Meaningful only
+        // at the Bearing rung; a Ranged or Visual contact carries its position on
+        // the hull instead and is drawn from that. Held here rather than re-derived
+        // at draw time precisely so the range is *not* available to the renderer: a
         // bearing-only contact must not be placeable, or it would leak the range
         // passive listening never gave.
+        //
+        // It is not the true bearing but a noisy one: UpdateSensors offsets the true
+        // contact position by the drifting `offset` vector and reads the angle to
+        // that displaced point, so the cut wanders and only tightens onto the real
+        // bearing as the contact firms up (see offset). The offset shifts the
+        // direction alone — no displaced position is ever stored — so the no-range
+        // rule above still holds. This noisy value is what the *renderer* draws; the
+        // TMA solver instead fits `trueBearing`, so the noise never poisons the range
+        // solution (see there).
         float bearing = 0.0f;
+
+        // The un-noised measured bearing (radians) — the same cut with the `offset`
+        // left off — set beside `bearing` at the Bearing rung and handed to the TMA
+        // solver in place of the noisy one. A deliberate gameplay concession:
+        // feeding the solver noise drove its fit residuals up and its confidence
+        // down until ranges effectively stopped solving, so the operator still sees
+        // an uncertain, wandering cut (bearing) while the solver works the clean
+        // geometry — and its confidence, earned on that clean fit, is what tightens
+        // the displayed offset as the track firms (see offset). So the noise is a
+        // matter of what is shown, not of what the passive plot can ultimately
+        // resolve.
+        float trueBearing = 0.0f;
 
         // Normalised passive signal strength in [0, 1] — 0 at the edge of hearing,
         // 1 for a loud, near cut. Meaningful only at the Bearing rung. It is a
@@ -468,14 +489,33 @@ namespace naval {
         float strength = 0.0f;
 
         // The last position the contact was *fixed* at, and whether it holds one.
-        // Set from the hull's true position each tick a Ranged or Visual detection
-        // lands; a bare bearing yields no fix and leaves hasPos false. This is what
-        // a lost track decays from — the mark stays put at the last-known point
-        // while the real hull steams on unseen — and what the radar blip is drawn
-        // at, so a stale contact freezes rather than tracking a hull it no longer
-        // holds.
+        // Set each tick a Ranged or Visual detection lands; a bare bearing yields no
+        // fix and leaves hasPos false. This is what a lost track decays from — the
+        // mark stays put at the last-known point while the real hull steams on
+        // unseen — and what the radar blip is drawn at, so a stale contact freezes
+        // rather than tracking a hull it no longer holds.
+        //
+        // For a live Ranged fix it is the *believed* position, the true fix plus the
+        // drifting `offset` (Visual carries a zero offset, so it is exact): guns and
+        // the blip lead on the displaced point, while the velocity tracker strips the
+        // offset back off when it differences fixes, so the wander never registers as
+        // target motion.
         b2Vec2 lastPos{ 0.0f, 0.0f };
         bool hasPos = false;
+
+        // Persistent positional-noise offset (metres), the single mechanism behind
+        // sensor uncertainty on the plot. Each detected tick UpdateSensors eases its
+        // length toward a cap set by how well the contact is held — wide for a faint
+        // passive cut, tightening as the received strength grows or a TMA solution
+        // firms it, and zero for a Visual contact you can actually see — while its
+        // direction wanders on a slow random walk, so the mark drifts smoothly
+        // rather than jumping each tick. It is added to the contact's true position
+        // before that position is surfaced: baked into lastPos for an active fix (so
+        // guns and the blip lead on the believed point) and read out as an angle
+        // into `bearing` for a passive cut. Held per contact so the drift is
+        // continuous across ticks and so the velocity tracker can cancel it out
+        // (differencing true-against-true) and not mistake the wander for motion.
+        b2Vec2 offset{ 0.0f, 0.0f };
 
         // The contact's estimated velocity, built up by tracking rather than read
         // off the hull — an active fix gives a position each tick, and a run of

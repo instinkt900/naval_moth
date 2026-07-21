@@ -328,12 +328,12 @@ namespace naval {
                 // that the window spans real manoeuvre rather than one heading. Each
                 // cut advances the held solution: confirm, refute, or first lock.
                 if (track.samples.empty() || track.sinceSample >= kSampleIntervalS) {
-                    track.samples.push_back(TmaTrack::Sample{ track.age, ownPos, entry.second.bearing });
+                    track.samples.push_back(TmaTrack::Sample{ track.age, ownPos, entry.second.trueBearing });
                     track.sinceSample = 0.0f;
                     if (static_cast<int>(track.samples.size()) > kMaxSamples) {
                         track.samples.erase(track.samples.begin());
                     }
-                    AdvanceTrack(track, SolveCandidate(track.samples, maxRangeM), entry.second.bearing, ownPos);
+                    AdvanceTrack(track, SolveCandidate(track.samples, maxRangeM), entry.second.trueBearing, ownPos);
                 }
             }
 
